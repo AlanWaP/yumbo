@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Yumbo Multiplayer</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <a
+      class="github-link"
+      href="https://github.com/AlanWaP/yumbo"
+      aria-label="Open GitHub repository"
+    >
+      <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
+        <path
+          d="M12 0.5C5.65 0.5 0.5 5.65 0.5 12c0 5.09 3.29 9.4 7.86 10.92 0.58 0.1 0.79-0.25 0.79-0.55v-2.02c-3.2 0.7-3.88-1.36-3.88-1.36-0.52-1.33-1.28-1.68-1.28-1.68-1.05-0.72 0.08-0.7 0.08-0.7 1.16 0.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36 0.96 0.1-0.75 0.4-1.26 0.73-1.55-2.55-0.29-5.23-1.28-5.23-5.68 0-1.25 0.45-2.28 1.18-3.08-0.12-0.29-0.51-1.46 0.11-3.04 0 0 0.97-0.31 3.16 1.18 0.92-0.26 1.9-0.38 2.88-0.39 0.98 0.01 1.96 0.13 2.88 0.39 2.19-1.49 3.15-1.18 3.15-1.18 0.63 1.58 0.23 2.75 0.11 3.04 0.74 0.8 1.18 1.83 1.18 3.08 0 4.42-2.69 5.39-5.25 5.67 0.41 0.36 0.78 1.06 0.78 2.14v3.17c0 0.31 0.21 0.66 0.8 0.55A11.52 11.52 0 0 0 23.5 12C23.5 5.65 18.35 0.5 12 0.5Z"
+        />
+      </svg>
+    </a>
+
+    <main class="app">
+      <section class="card">
+        <h1>Yumbo</h1>
+        <p id="status" class="status">Enter your backend URL to begin.</p>
+
+        <section id="connection-panel" class="panel">
+          <label for="server-url">Backend WebSocket URL</label>
+          <div class="input-row">
+            <input
+              id="server-url"
+              type="url"
+              placeholder="ws://localhost:3000 or wss://your-tunnel-url"
+              autocomplete="off"
+            />
+            <button id="connect-button" type="button">Connect</button>
+          </div>
+          <p class="hint">
+            Use <code>ws://localhost:3000</code> locally. Use a <code>wss://</code>
+            tunnel URL when this page is hosted on GitHub Pages.
+          </p>
+        </section>
+
+        <section class="player-panel" aria-label="Connection details">
+          <span id="player-label">Player: not assigned</span>
+          <span id="game-label">Game type: none</span>
+          <span id="room-label">Room: none</span>
+        </section>
+
+        <section id="lobby-panel" class="panel" hidden>
+          <label for="game-type">Game type</label>
+          <div class="input-row">
+            <input
+              id="game-type"
+              type="text"
+              placeholder="example: rps, cards, trivia"
+              autocomplete="off"
+            />
+            <button id="join-queue-button" type="button">Enter queue</button>
+            <button id="leave-queue-button" type="button" hidden>Leave queue</button>
+          </div>
+          <p class="hint">
+            The backend matches only players who request the same game type.
+          </p>
+        </section>
+
+        <section id="game-frame" class="game-frame" aria-live="polite">
+          <h2>Game Frame</h2>
+          <p>
+            Future game elements will be mounted here. This framework only shows
+            connection, queue, and room state for now.
+          </p>
+        </section>
+
+        <div class="actions">
+          <button id="leave-room-button" type="button" hidden>Leave room</button>
+        </div>
+      </section>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>
