@@ -44,11 +44,15 @@
         <section class="player-panel" aria-label="Connection details">
           <span id="player-label">Player: not assigned</span>
           <span id="game-label">Game type: none</span>
+          <span id="player-count-label">Players needed: none</span>
           <span id="room-label">Room: none</span>
         </section>
 
         <section id="lobby-panel" class="panel" hidden>
-          <label for="game-type">Game type</label>
+          <div class="lobby-labels">
+            <label for="game-type">Game type</label>
+            <label for="player-count">Players needed</label>
+          </div>
           <div class="input-row">
             <input
               id="game-type"
@@ -56,11 +60,21 @@
               placeholder="example: rps, cards, trivia"
               autocomplete="off"
             />
+            <input
+              id="player-count"
+              class="player-count-input"
+              type="number"
+              min="2"
+              max="16"
+              value="2"
+              autocomplete="off"
+            />
             <button id="join-queue-button" type="button">Enter queue</button>
             <button id="leave-queue-button" type="button" hidden>Leave queue</button>
           </div>
           <p class="hint">
-            The backend matches only players who request the same game type.
+            The backend matches only players who request the same game type and
+            player count.
           </p>
         </section>
 

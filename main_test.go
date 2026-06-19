@@ -64,6 +64,21 @@ func TestJoinQueueRequiresGameType(t *testing.T) {
 	}
 }
 
+func TestJoinQueueRejectsInvalidPlayerCount(t *testing.T) {
+	gameHub := newHub()
+	playerOne, playerOneConn := addTestPlayer(gameHub, "player_one")
+
+	gameHub.handleMessage(playerOne, clientMessage{Type: "join_queue", GameType: "rps", PlayerCount: 1})
+
+	message := lastMessage(t, playerOneConn)
+	if message.Type != "error" {
+		t.Fatalf("expected error, got %q", message.Type)
+	}
+	if playerOne.queueKey != "" {
+		t.Fatalf("expected player to remain outside queues, got queue key %q", playerOne.queueKey)
+	}
+}
+
 func TestSameGameTypePlayersMatchIntoRoom(t *testing.T) {
 	gameHub := newHub()
 	playerOne, playerOneConn := addTestPlayer(gameHub, "player_one")
@@ -75,8 +90,8 @@ func TestSameGameTypePlayersMatchIntoRoom(t *testing.T) {
 	if len(gameHub.rooms) != 1 {
 		t.Fatalf("expected one room, got %d", len(gameHub.rooms))
 	}
-	if len(gameHub.queues["rps"]) != 0 {
-		t.Fatalf("expected rps queue to be empty, got %v", gameHub.queues["rps"])
+	if len(gameHub.queues["rps:2"]) != 0 {
+		t.Fatalf("expected rps two-player queue to be empty, got %v", gameHub.queues["rps:2"])
 	}
 	if playerOne.roomID == "" || playerTwo.roomID == "" || playerOne.roomID != playerTwo.roomID {
 		t.Fatalf("expected players to share a room, got %q and %q", playerOne.roomID, playerTwo.roomID)
@@ -89,6 +104,63 @@ func TestSameGameTypePlayersMatchIntoRoom(t *testing.T) {
 	}
 	if playerOneMessage.GameType != "rps" || playerTwoMessage.GameType != "rps" {
 		t.Fatalf("expected rps game type, got %q and %q", playerOneMessage.GameType, playerTwoMessage.GameType)
+	}
+	if playerOneMessage.PlayerCount != 2 || playerTwoMessage.PlayerCount != 2 {
+		t.Fatalf("expected default player count 2, got %d and %d", playerOneMessage.PlayerCount, playerTwoMessage.PlayerCount)
+	}
+}
+
+func TestThreePlayersMatchIntoRoom(t *testing.T) {
+	gameHub := newHub()
+	playerOne, playerOneConn := addTestPlayer(gameHub, "player_one")
+	playerTwo, playerTwoConn := addTestPlayer(gameHub, "player_two")
+	playerThree, playerThreeConn := addTestPlayer(gameHub, "player_three")
+
+	gameHub.handleMessage(playerOne, clientMessage{Type: "join_queue", GameType: "cards", PlayerCount: 3})
+	gameHub.handleMessage(playerTwo, clientMessage{Type: "join_queue", GameType: "cards", PlayerCount: 3})
+
+	if len(gameHub.rooms) != 0 {
+		t.Fatalf("expected no room until third player joins, got %d", len(gameHub.rooms))
+	}
+
+	gameHub.handleMessage(playerThree, clientMessage{Type: "join_queue", GameType: "cards", PlayerCount: 3})
+
+	if len(gameHub.rooms) != 1 {
+		t.Fatalf("expected one room, got %d", len(gameHub.rooms))
+	}
+	if playerOne.roomID == "" || playerOne.roomID != playerTwo.roomID || playerTwo.roomID != playerThree.roomID {
+		t.Fatalf("expected all players to share one room, got %q, %q, %q", playerOne.roomID, playerTwo.roomID, playerThree.roomID)
+	}
+	for _, conn := range []*recordingConn{playerOneConn, playerTwoConn, playerThreeConn} {
+		message := lastMessage(t, conn)
+		if message.Type != "room_created" {
+			t.Fatalf("expected room_created, got %q", message.Type)
+		}
+		if message.PlayerCount != 3 {
+			t.Fatalf("expected player count 3, got %d", message.PlayerCount)
+		}
+		if len(message.Players) != 3 {
+			t.Fatalf("expected three players in message, got %v", message.Players)
+		}
+	}
+}
+
+func TestSameGameTypeDifferentPlayerCountsDoNotMatch(t *testing.T) {
+	gameHub := newHub()
+	playerOne, playerOneConn := addTestPlayer(gameHub, "player_one")
+	playerTwo, playerTwoConn := addTestPlayer(gameHub, "player_two")
+
+	gameHub.handleMessage(playerOne, clientMessage{Type: "join_queue", GameType: "cards", PlayerCount: 3})
+	gameHub.handleMessage(playerTwo, clientMessage{Type: "join_queue", GameType: "cards", PlayerCount: 2})
+
+	if len(gameHub.rooms) != 0 {
+		t.Fatalf("expected no rooms, got %d", len(gameHub.rooms))
+	}
+	if got := lastMessage(t, playerOneConn).Type; got != "queued" {
+		t.Fatalf("expected first player to remain queued, got %q", got)
+	}
+	if got := lastMessage(t, playerTwoConn).Type; got != "queued" {
+		t.Fatalf("expected second player to remain queued, got %q", got)
 	}
 }
 
@@ -125,6 +197,9 @@ func TestLeaveQueueRemovesPlayer(t *testing.T) {
 	}
 	if playerOne.gameType != "" {
 		t.Fatalf("expected first player game type to clear, got %q", playerOne.gameType)
+	}
+	if playerOne.queueKey != "" {
+		t.Fatalf("expected first player queue key to clear, got %q", playerOne.queueKey)
 	}
 
 	message := playerOneConn.messages[1]
@@ -187,10 +262,10 @@ func TestRemovePlayerCleansQueueAndNotifiesRoomPeer(t *testing.T) {
 	playerOne, playerOneConn := addTestPlayer(gameHub, "player_one")
 	playerTwo, playerTwoConn := addTestPlayer(gameHub, "player_two")
 
-	gameHub.handleMessage(queuedPlayer, clientMessage{Type: "join_queue", GameType: "cards"})
+	gameHub.handleMessage(queuedPlayer, clientMessage{Type: "join_queue", GameType: "cards", PlayerCount: 3})
 	gameHub.removePlayer(queuedPlayer)
-	if len(gameHub.queues["cards"]) != 0 {
-		t.Fatalf("expected disconnected queued player to be removed, got %v", gameHub.queues["cards"])
+	if len(gameHub.queues["cards:3"]) != 0 {
+		t.Fatalf("expected disconnected queued player to be removed, got %v", gameHub.queues["cards:3"])
 	}
 	if !queuedConn.closed {
 		t.Fatal("expected disconnected queued player's connection to close")
@@ -211,5 +286,8 @@ func TestRemovePlayerCleansQueueAndNotifiesRoomPeer(t *testing.T) {
 	}
 	if playerTwo.roomID != "" || playerTwo.gameType != "" {
 		t.Fatalf("expected remaining peer room state to clear, got room %q game %q", playerTwo.roomID, playerTwo.gameType)
+	}
+	if playerTwo.playerCount != 0 || playerTwo.queueKey != "" {
+		t.Fatalf("expected remaining peer queue state to clear, got count %d key %q", playerTwo.playerCount, playerTwo.queueKey)
 	}
 }

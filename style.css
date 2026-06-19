@@ -109,6 +109,12 @@ h1 {
   font-weight: 700;
 }
 
+.lobby-labels {
+  display: grid;
+  grid-template-columns: 1fr 150px auto auto;
+  gap: 10px;
+}
+
 .input-row {
   display: flex;
   gap: 10px;
@@ -120,6 +126,10 @@ h1 {
   padding: 12px 14px;
   border: 1px solid #cfd7eb;
   border-radius: 999px;
+}
+
+.input-row .player-count-input {
+  flex: 0 0 150px;
 }
 
 .input-row button,
@@ -188,5 +198,13 @@ h1 {
 
   .input-row {
     flex-direction: column;
+  }
+
+  .lobby-labels {
+    display: block;
+  }
+
+  .input-row .player-count-input {
+    flex-basis: auto;
   }
 }

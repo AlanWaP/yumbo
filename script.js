@@ -4,8 +4,10 @@ const connectButton = document.querySelector("#connect-button");
 const connectionPanel = document.querySelector("#connection-panel");
 const lobbyPanel = document.querySelector("#lobby-panel");
 const gameTypeInput = document.querySelector("#game-type");
+const playerCountInput = document.querySelector("#player-count");
 const playerLabel = document.querySelector("#player-label");
 const gameLabel = document.querySelector("#game-label");
+const playerCountLabel = document.querySelector("#player-count-label");
 const roomLabel = document.querySelector("#room-label");
 const joinQueueButton = document.querySelector("#join-queue-button");
 const leaveQueueButton = document.querySelector("#leave-queue-button");
@@ -15,6 +17,7 @@ const gameFrame = document.querySelector("#game-frame");
 const urlParams = new URLSearchParams(window.location.search);
 const savedServerUrl = localStorage.getItem("yumboServerUrl");
 const savedGameType = localStorage.getItem("yumboGameType");
+const savedPlayerCount = localStorage.getItem("yumboPlayerCount");
 const defaultServerUrl =
   urlParams.get("server") ||
   savedServerUrl ||
@@ -27,10 +30,12 @@ let socket;
 let playerId;
 let roomId;
 let gameType;
+let playerCount;
 let isQueued = false;
 
 serverUrlInput.value = defaultServerUrl;
 gameTypeInput.value = urlParams.get("game") || savedGameType || "";
+playerCountInput.value = urlParams.get("players") || savedPlayerCount || "2";
 updateLabels();
 
 if (defaultServerUrl) {
@@ -48,6 +53,12 @@ serverUrlInput.addEventListener("keydown", (event) => {
 });
 
 gameTypeInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    joinQueue();
+  }
+});
+
+playerCountInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     joinQueue();
   }
@@ -103,6 +114,7 @@ function connect(rawUrl) {
     playerId = undefined;
     roomId = undefined;
     gameType = undefined;
+    playerCount = undefined;
     isQueued = false;
     updateLabels();
     setStatus("Disconnected from multiplayer backend.");
@@ -133,11 +145,15 @@ function handleServerMessage(rawMessage) {
   if (message.type === "queued" || message.type === "already_queued") {
     playerId = message.playerId || playerId;
     gameType = message.gameType;
+    playerCount = message.playerCount;
     roomId = undefined;
     isQueued = true;
     updateLabels();
-    setStatus("Waiting for another player...");
-    setGameFrame("Waiting Room", "Keep this page open while the backend finds a match.");
+    setStatus("Waiting for players...");
+    setGameFrame(
+      "Waiting Room",
+      `Keep this page open while the backend finds ${message.playerCount || "enough"} players.`
+    );
     joinQueueButton.hidden = true;
     leaveQueueButton.hidden = false;
     leaveRoomButton.hidden = true;
@@ -147,13 +163,16 @@ function handleServerMessage(rawMessage) {
   if (message.type === "room_created") {
     playerId = message.playerId || playerId;
     gameType = message.gameType;
+    playerCount = message.playerCount;
     roomId = message.roomId;
     isQueued = false;
     updateLabels();
     setStatus("Room created. A game module can now take over the game frame.");
     setGameFrame(
       "Room Ready",
-      `Room ${message.roomId} is ready for ${message.gameType}. Players: ${
+      `Room ${message.roomId} is ready for ${message.gameType} with ${
+        message.playerCount || message.players?.length || "multiple"
+      } players. Players: ${
         message.players?.join(", ") || "unknown"
       }.`
     );
@@ -165,6 +184,7 @@ function handleServerMessage(rawMessage) {
 
   if (message.type === "queue_left" || message.type === "not_queued") {
     roomId = undefined;
+    playerCount = undefined;
     isQueued = false;
     updateLabels();
     setStatus("You are not in the queue.");
@@ -178,6 +198,7 @@ function handleServerMessage(rawMessage) {
   if (message.type === "room_left" || message.type === "peer_left") {
     roomId = undefined;
     gameType = undefined;
+    playerCount = undefined;
     isQueued = false;
     updateLabels();
     setStatus(message.type === "peer_left" ? "The other player left." : "You left the room.");
@@ -200,6 +221,7 @@ function handleServerMessage(rawMessage) {
 
 function joinQueue() {
   const requestedGameType = gameTypeInput.value.trim();
+  const requestedPlayerCount = Number.parseInt(playerCountInput.value, 10);
 
   if (!socket || socket.readyState !== WebSocket.OPEN) {
     setStatus("Connect to the multiplayer backend first.");
@@ -211,12 +233,27 @@ function joinQueue() {
     return;
   }
 
+  if (
+    !Number.isInteger(requestedPlayerCount) ||
+    requestedPlayerCount < 2 ||
+    requestedPlayerCount > 16
+  ) {
+    setStatus("Players needed must be a number between 2 and 16.");
+    return;
+  }
+
   localStorage.setItem("yumboGameType", requestedGameType);
+  localStorage.setItem("yumboPlayerCount", String(requestedPlayerCount));
   gameType = requestedGameType;
+  playerCount = requestedPlayerCount;
   roomId = undefined;
   isQueued = true;
   updateLabels();
-  send({ type: "join_queue", gameType: requestedGameType });
+  send({
+    type: "join_queue",
+    gameType: requestedGameType,
+    playerCount: requestedPlayerCount,
+  });
   setStatus("Joining the waiting queue...");
   setGameFrame("Joining Queue", "Waiting for the backend to confirm your place.");
   joinQueueButton.hidden = true;
@@ -249,5 +286,6 @@ function setGameFrame(title, detail) {
 function updateLabels() {
   playerLabel.textContent = `Player: ${playerId || "not assigned"}`;
   gameLabel.textContent = `Game type: ${gameType || "none"}`;
+  playerCountLabel.textContent = `Players needed: ${playerCount || "none"}`;
   roomLabel.textContent = `Room: ${roomId || "none"}`;
 }

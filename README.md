@@ -9,7 +9,8 @@ This first version is intentionally game-agnostic:
 - The frontend has connection, lobby, queue, room status, and an empty game
   frame.
 - The backend handles WebSocket connections, player IDs, game-type queues,
-  room creation, room leaving, disconnect cleanup, and generic room messages.
+  configurable room sizes, room creation, room leaving, disconnect cleanup, and
+  generic room messages.
 - Game-specific UI and rules can be added later as separate modules.
 
 ## Local Development
@@ -38,8 +39,8 @@ Open:
 http://localhost:8080
 ```
 
-Open two browser tabs, connect both to `ws://localhost:3000`, enter the same
-game type, and both players will be matched into a room.
+Open multiple browser tabs, connect them to `ws://localhost:3000`, enter the
+same game type and player count, and the players will be matched into a room.
 
 ## GitHub Pages
 
@@ -69,7 +70,7 @@ https://alanwap.github.io/yumbo/?server=wss://example.trycloudflare.com
 
 Client messages:
 
-- `join_queue` with `gameType`
+- `join_queue` with `gameType` and optional `playerCount`
 - `leave_queue`
 - `leave_room`
 - `room_message` with arbitrary `payload`
@@ -86,6 +87,9 @@ Server messages:
 - `peer_left`
 - `room_message`
 - `error`
+
+If `playerCount` is omitted, the backend defaults to 2. The backend matches
+players only when both `gameType` and `playerCount` are the same.
 
 The backend does not interpret game-specific payloads. It only relays
 `room_message.payload` to the other players in the same room.
