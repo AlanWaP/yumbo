@@ -373,6 +373,12 @@ function renderGameState(gameState) {
     return;
   }
 
+  const board = document.createElement("section");
+  board.className = "game-board";
+
+  const header = document.createElement("header");
+  header.className = "game-board-header";
+
   const heading = document.createElement("h2");
   heading.textContent = gameState.phase === "finished"
     ? "Game finished"
@@ -382,6 +388,29 @@ function renderGameState(gameState) {
   summary.textContent = gameState.phase === "finished"
     ? `Winner: ${formatPlayerIds(gameState.winners)}`
     : "Choose one move. The round resolves after every alive player has moved.";
+
+  header.append(heading, summary);
+
+  if (Array.isArray(gameState.lastResults) && gameState.lastResults.length > 0) {
+    const results = document.createElement("ul");
+    results.className = "round-results";
+    for (const result of gameState.lastResults) {
+      const item = document.createElement("li");
+      item.textContent = result.targetId
+        ? `${result.playerId} ${result.message} ${result.targetId}`
+        : `${result.playerId} ${result.message}`;
+      results.append(item);
+    }
+    header.append(results);
+  }
+
+  const content = document.createElement("div");
+  content.className = "game-board-content";
+
+  const playerPanel = document.createElement("section");
+  playerPanel.className = "player-status-panel";
+  const playerPanelTitle = document.createElement("h3");
+  playerPanelTitle.textContent = "Players";
 
   const playerGrid = document.createElement("div");
   playerGrid.className = "game-player-grid";
@@ -401,29 +430,51 @@ function renderGameState(gameState) {
     playerGrid.append(card);
   }
 
-  gameFrame.append(heading, summary, playerGrid);
+  playerPanel.append(playerPanelTitle, playerGrid);
+  content.append(playerPanel, createActionPanel(gameState));
+  board.append(header, content);
+  gameFrame.append(board);
+}
 
-  if (Array.isArray(gameState.lastResults) && gameState.lastResults.length > 0) {
-    const results = document.createElement("ul");
-    results.className = "round-results";
-    for (const result of gameState.lastResults) {
-      const item = document.createElement("li");
-      item.textContent = result.targetId
-        ? `${result.playerId} ${result.message} ${result.targetId}`
-        : `${result.playerId} ${result.message}`;
-      results.append(item);
+function createActionPanel(gameState) {
+  const panel = document.createElement("aside");
+  panel.className = "action-panel";
+
+  const title = document.createElement("h3");
+  title.textContent = "Actions";
+  panel.append(title);
+
+  const helperText = document.createElement("p");
+  helperText.className = "action-helper";
+
+  if (!canSubmitMove(gameState)) {
+    if (gameState.phase === "finished") {
+      helperText.textContent = "The game is over.";
+    } else if (submittedRound === gameState.round) {
+      helperText.textContent = "You already moved this round. Waiting for other players.";
+    } else if (!currentPlayer(gameState)?.alive) {
+      helperText.textContent = "You are eliminated and cannot move.";
+    } else {
+      helperText.textContent = "Waiting for the next available action.";
     }
-    gameFrame.append(results);
+    panel.append(helperText);
+    return panel;
   }
 
-  if (canSubmitMove(gameState)) {
-    gameFrame.append(createMoveControls(gameState));
-  }
+  helperText.textContent = "Pick one move for this round.";
+  panel.append(helperText, createMoveControls(gameState));
+  return panel;
 }
 
 function createMoveControls(gameState) {
   const controls = document.createElement("div");
   controls.className = "game-controls";
+
+  const attackGroup = document.createElement("div");
+  attackGroup.className = "action-group";
+
+  const attackLabel = document.createElement("label");
+  attackLabel.textContent = "Attack target";
 
   const targetSelect = document.createElement("select");
   const targets = attackTargets(gameState);
@@ -441,6 +492,10 @@ function createMoveControls(gameState) {
   attackButton.addEventListener("click", () => {
     sendGameMove("attack", targetSelect.value);
   });
+  attackGroup.append(attackLabel, targetSelect, attackButton);
+
+  const basicActions = document.createElement("div");
+  basicActions.className = "action-group";
 
   const defendButton = document.createElement("button");
   defendButton.type = "button";
@@ -455,8 +510,9 @@ function createMoveControls(gameState) {
   gainPowerButton.addEventListener("click", () => {
     sendGameMove("gain_power");
   });
+  basicActions.append(defendButton, gainPowerButton);
 
-  controls.append(targetSelect, attackButton, defendButton, gainPowerButton);
+  controls.append(attackGroup, basicActions);
   return controls;
 }
 

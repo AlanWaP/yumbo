@@ -290,11 +290,44 @@ button.game-card:hover:not(:disabled) {
   color: #667195;
 }
 
+.game-board {
+  display: grid;
+  gap: 18px;
+}
+
+.game-board-header {
+  display: grid;
+  gap: 8px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #dfe4f2;
+}
+
+.game-board-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(240px, 0.8fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.player-status-panel,
+.action-panel {
+  min-height: 220px;
+  padding: 16px;
+  border: 1px solid #dfe4f2;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.player-status-panel h3,
+.action-panel h3 {
+  margin: 0 0 12px;
+  color: #182033;
+}
+
 .game-player-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 10px;
-  margin-top: 18px;
 }
 
 .game-player-card {
@@ -318,14 +351,12 @@ button.game-card:hover:not(:disabled) {
 }
 
 .game-controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 18px;
+  display: grid;
+  gap: 14px;
 }
 
 .game-controls select {
-  min-width: 180px;
+  width: 100%;
   padding: 12px 14px;
   border: 1px solid #cfd7eb;
   border-radius: 999px;
@@ -333,13 +364,29 @@ button.game-card:hover:not(:disabled) {
 }
 
 .game-controls button {
+  width: 100%;
   padding: 12px 16px;
+}
+
+.action-helper {
+  margin-bottom: 14px;
+}
+
+.action-group {
+  display: grid;
+  gap: 8px;
+}
+
+.action-group label {
+  color: #33406a;
+  font-size: 0.9rem;
+  font-weight: 800;
 }
 
 .round-results {
   display: grid;
   gap: 6px;
-  margin: 18px 0 0;
+  margin: 6px 0 0;
   padding-left: 20px;
   color: #4b587c;
 }
@@ -370,6 +417,10 @@ button.game-card:hover:not(:disabled) {
   }
 
   .game-card {
+    grid-template-columns: 1fr;
+  }
+
+  .game-board-content {
     grid-template-columns: 1fr;
   }
 }
