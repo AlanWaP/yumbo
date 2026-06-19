@@ -23,7 +23,7 @@ Requirements:
 Start everything with one command:
 
 ```sh
-./scripts/dev.sh
+./scripts/dev_local.sh
 ```
 
 The script starts the backend and frontend, opens the local page on macOS, and
@@ -47,7 +47,7 @@ backend automatically.
 You can override the ports, backend URL, or browser launch:
 
 ```sh
-PORT=3001 FRONTEND_PORT=8081 OPEN_BROWSER=0 ./scripts/dev.sh
+PORT=3001 FRONTEND_PORT=8081 OPEN_BROWSER=0 ./scripts/dev_local.sh
 ```
 
 Available environment variables:
