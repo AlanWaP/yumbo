@@ -46,11 +46,11 @@ require_command python3
 cd "${ROOT_DIR}"
 
 echo "Starting Yumbo backend on ${SERVER_URL}..."
-PORT="${PORT}" go run . &
+PORT="${PORT}" go run ./backend &
 backend_pid="$!"
 
 echo "Starting frontend on http://localhost:${FRONTEND_PORT}..."
-python3 -m http.server "${FRONTEND_PORT}" >/dev/null 2>&1 &
+python3 -m http.server "${FRONTEND_PORT}" --directory frontend >/dev/null 2>&1 &
 frontend_pid="$!"
 
 echo

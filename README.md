@@ -7,11 +7,19 @@ on your PC or another host.
 This first version is intentionally game-agnostic:
 
 - The frontend has connection, dropdown game creation, an existing-games lobby,
-  queue, room status, and an empty game frame.
+  queue, room status, and an empty game frame under `frontend/`.
 - The backend handles WebSocket connections, player IDs, game-type queues,
   configurable room sizes, room creation, room leaving, disconnect cleanup, and
-  generic room messages.
+  generic room messages under `backend/`.
 - Game-specific UI and rules can be added later as separate modules.
+
+## Project Layout
+
+```text
+backend/   Go WebSocket backend and tests
+frontend/  Static HTML, CSS, and browser JavaScript
+scripts/   Local development helpers
+```
 
 ## Local Development
 
@@ -66,11 +74,11 @@ player count.
 
 GitHub Pages can host only the static frontend files:
 
-- `index.html`
-- `style.css`
-- `script.js`
+- `frontend/index.html`
+- `frontend/style.css`
+- `frontend/script.js`
 
-When using the hosted frontend at:
+Publish the static files from `frontend/`. When using the hosted frontend at:
 
 ```text
 https://alanwap.github.io/yumbo/
