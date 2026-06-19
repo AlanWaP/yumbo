@@ -4,6 +4,7 @@ const connectButton = document.querySelector("#connect-button");
 const connectionPanel = document.querySelector("#connection-panel");
 const lobbyPanel = document.querySelector("#lobby-panel");
 const gameTypeInput = document.querySelector("#game-type");
+const gameModeInput = document.querySelector("#game-mode");
 const playerCountInput = document.querySelector("#player-count");
 const playerLabel = document.querySelector("#player-label");
 const gameLabel = document.querySelector("#game-label");
@@ -25,6 +26,7 @@ const gameTypeNames = {
 const urlParams = new URLSearchParams(window.location.search);
 const savedServerUrl = localStorage.getItem("yumboServerUrl");
 const savedGameType = localStorage.getItem("yumboGameType");
+const savedGameMode = localStorage.getItem("yumboGameMode");
 const savedPlayerCount = localStorage.getItem("yumboPlayerCount");
 const defaultServerUrl =
   urlParams.get("server") ||
@@ -38,14 +40,21 @@ let socket;
 let playerId;
 let roomId;
 let gameType;
+let gameMode;
 let playerCount;
 let isQueued = false;
 let lobbyGames = [];
+let currentGameState;
+let submittedRound;
 
 serverUrlInput.value = defaultServerUrl;
 gameTypeInput.value = urlParams.get("game") || savedGameType || "rps";
 if (!gameTypeNames[gameTypeInput.value]) {
   gameTypeInput.value = "rps";
+}
+gameModeInput.value = urlParams.get("mode") || savedGameMode || "free_for_all";
+if (!["free_for_all", "team"].includes(gameModeInput.value)) {
+  gameModeInput.value = "free_for_all";
 }
 playerCountInput.value = urlParams.get("players") || savedPlayerCount || "2";
 if (!playerCountInput.value) {
@@ -134,9 +143,12 @@ function connect(rawUrl) {
     playerId = undefined;
     roomId = undefined;
     gameType = undefined;
+    gameMode = undefined;
     playerCount = undefined;
     isQueued = false;
     lobbyGames = [];
+    currentGameState = undefined;
+    submittedRound = undefined;
     updateLabels();
     renderExistingGames();
     setStatus("Disconnected from multiplayer backend.");
@@ -173,9 +185,12 @@ function handleServerMessage(rawMessage) {
   if (message.type === "queued" || message.type === "already_queued") {
     playerId = message.playerId || playerId;
     gameType = message.gameType;
+    gameMode = message.gameMode;
     playerCount = message.playerCount;
     roomId = undefined;
     isQueued = true;
+    currentGameState = undefined;
+    submittedRound = undefined;
     updateLabels();
     setStatus("Waiting for players...");
     setGameFrame(
@@ -191,19 +206,15 @@ function handleServerMessage(rawMessage) {
   if (message.type === "room_created") {
     playerId = message.playerId || playerId;
     gameType = message.gameType;
+    gameMode = message.gameMode;
     playerCount = message.playerCount;
     roomId = message.roomId;
     isQueued = false;
     updateLabels();
-    setStatus("Room created. A game module can now take over the game frame.");
-    setGameFrame(
-      "Room Ready",
-      `Room ${message.roomId} is ready for ${message.gameType} with ${
-        message.playerCount || message.players?.length || "multiple"
-      } players. Players: ${
-        message.players?.join(", ") || "unknown"
-      }.`
-    );
+    setStatus("Room created. Choose a move for round one.");
+    currentGameState = message.payload;
+    submittedRound = undefined;
+    renderGameState(currentGameState);
     joinQueueButton.hidden = false;
     leaveQueueButton.hidden = true;
     leaveRoomButton.hidden = false;
@@ -214,6 +225,8 @@ function handleServerMessage(rawMessage) {
     roomId = undefined;
     playerCount = undefined;
     isQueued = false;
+    currentGameState = undefined;
+    submittedRound = undefined;
     updateLabels();
     setStatus("You are not in the queue.");
     setGameFrame("Game Frame", "Choose a game type and enter the queue when ready.");
@@ -226,8 +239,11 @@ function handleServerMessage(rawMessage) {
   if (message.type === "room_left" || message.type === "peer_left") {
     roomId = undefined;
     gameType = undefined;
+    gameMode = undefined;
     playerCount = undefined;
     isQueued = false;
+    currentGameState = undefined;
+    submittedRound = undefined;
     updateLabels();
     setStatus(message.type === "peer_left" ? "The other player left." : "You left the room.");
     setGameFrame("Room Closed", "Return to the lobby to queue for another game.");
@@ -242,6 +258,27 @@ function handleServerMessage(rawMessage) {
     return;
   }
 
+  if (message.type === "game_move_accepted") {
+    submittedRound = message.payload?.round;
+    setStatus("Move submitted. Waiting for the rest of the round.");
+    renderGameState(currentGameState);
+    return;
+  }
+
+  if (
+    message.type === "game_state" ||
+    message.type === "round_resolved" ||
+    message.type === "game_finished"
+  ) {
+    currentGameState = message.payload;
+    if (currentGameState?.round !== submittedRound) {
+      submittedRound = undefined;
+    }
+    setStatus(formatGameStatus(message.type, currentGameState));
+    renderGameState(currentGameState);
+    return;
+  }
+
   if (message.type === "error") {
     setStatus(message.message || "The server reported an error.");
   }
@@ -249,6 +286,7 @@ function handleServerMessage(rawMessage) {
 
 function joinQueue(gameToJoin) {
   const requestedGameType = gameToJoin?.gameType || gameTypeInput.value;
+  const requestedGameMode = gameToJoin?.gameMode || gameModeInput.value;
   const requestedPlayerCount = Number.parseInt(
     gameToJoin?.playerCount || playerCountInput.value,
     10
@@ -274,10 +312,13 @@ function joinQueue(gameToJoin) {
   }
 
   localStorage.setItem("yumboGameType", requestedGameType);
+  localStorage.setItem("yumboGameMode", requestedGameMode);
   localStorage.setItem("yumboPlayerCount", String(requestedPlayerCount));
   gameTypeInput.value = requestedGameType;
+  gameModeInput.value = requestedGameMode;
   playerCountInput.value = String(requestedPlayerCount);
   gameType = requestedGameType;
+  gameMode = requestedGameMode;
   playerCount = requestedPlayerCount;
   roomId = undefined;
   isQueued = true;
@@ -285,6 +326,7 @@ function joinQueue(gameToJoin) {
   send({
     type: "join_queue",
     gameType: requestedGameType,
+    gameMode: requestedGameMode,
     playerCount: requestedPlayerCount,
   });
   setStatus(gameToJoin ? "Joining the selected game..." : "Creating a waiting game...");
@@ -323,6 +365,145 @@ function setGameFrame(title, detail) {
   gameFrame.append(heading, paragraph);
 }
 
+function renderGameState(gameState) {
+  gameFrame.innerHTML = "";
+
+  if (!gameState) {
+    setGameFrame("Room Ready", "Waiting for the first game state from the backend.");
+    return;
+  }
+
+  const heading = document.createElement("h2");
+  heading.textContent = gameState.phase === "finished"
+    ? "Game finished"
+    : `Round ${gameState.round}`;
+
+  const summary = document.createElement("p");
+  summary.textContent = gameState.phase === "finished"
+    ? `Winner: ${formatPlayerIds(gameState.winners)}`
+    : "Choose one move. The round resolves after every alive player has moved.";
+
+  const playerGrid = document.createElement("div");
+  playerGrid.className = "game-player-grid";
+
+  for (const player of Object.values(gameState.players || {})) {
+    const card = document.createElement("div");
+    card.className = `game-player-card${player.id === playerId ? " current-player" : ""}${
+      player.alive ? "" : " eliminated"
+    }`;
+    card.innerHTML = `
+      <strong>${player.id === playerId ? "You" : player.id}</strong>
+      <span>Team: ${player.teamId}</span>
+      <span>Health: ${player.health}</span>
+      <span>Power: ${player.power}</span>
+      <span>${player.alive ? "Alive" : "Eliminated"}</span>
+    `;
+    playerGrid.append(card);
+  }
+
+  gameFrame.append(heading, summary, playerGrid);
+
+  if (Array.isArray(gameState.lastResults) && gameState.lastResults.length > 0) {
+    const results = document.createElement("ul");
+    results.className = "round-results";
+    for (const result of gameState.lastResults) {
+      const item = document.createElement("li");
+      item.textContent = result.targetId
+        ? `${result.playerId} ${result.message} ${result.targetId}`
+        : `${result.playerId} ${result.message}`;
+      results.append(item);
+    }
+    gameFrame.append(results);
+  }
+
+  if (canSubmitMove(gameState)) {
+    gameFrame.append(createMoveControls(gameState));
+  }
+}
+
+function createMoveControls(gameState) {
+  const controls = document.createElement("div");
+  controls.className = "game-controls";
+
+  const targetSelect = document.createElement("select");
+  const targets = attackTargets(gameState);
+  for (const target of targets) {
+    const option = document.createElement("option");
+    option.value = target.id;
+    option.textContent = target.id;
+    targetSelect.append(option);
+  }
+
+  const attackButton = document.createElement("button");
+  attackButton.type = "button";
+  attackButton.textContent = `Attack (${gameState.rules.attackCost} power)`;
+  attackButton.disabled = targets.length === 0 || currentPlayer(gameState).power < gameState.rules.attackCost;
+  attackButton.addEventListener("click", () => {
+    sendGameMove("attack", targetSelect.value);
+  });
+
+  const defendButton = document.createElement("button");
+  defendButton.type = "button";
+  defendButton.textContent = "Defend";
+  defendButton.addEventListener("click", () => {
+    sendGameMove("defend");
+  });
+
+  const gainPowerButton = document.createElement("button");
+  gainPowerButton.type = "button";
+  gainPowerButton.textContent = `Gain power (+${gameState.rules.gainPowerAmount})`;
+  gainPowerButton.addEventListener("click", () => {
+    sendGameMove("gain_power");
+  });
+
+  controls.append(targetSelect, attackButton, defendButton, gainPowerButton);
+  return controls;
+}
+
+function sendGameMove(moveType, targetId) {
+  send({
+    type: "game_move",
+    payload: {
+      moveType,
+      targetId,
+    },
+  });
+}
+
+function canSubmitMove(gameState) {
+  const player = currentPlayer(gameState);
+  return Boolean(
+    player &&
+      player.alive &&
+      gameState.phase === "waiting_for_moves" &&
+      submittedRound !== gameState.round
+  );
+}
+
+function currentPlayer(gameState) {
+  return gameState.players?.[playerId];
+}
+
+function attackTargets(gameState) {
+  const player = currentPlayer(gameState);
+  if (!player) {
+    return [];
+  }
+  return Object.values(gameState.players || {}).filter((target) => {
+    return target.alive && target.id !== playerId && target.teamId !== player.teamId;
+  });
+}
+
+function formatGameStatus(messageType, gameState) {
+  if (messageType === "game_finished") {
+    return `Game finished. Winner: ${formatPlayerIds(gameState?.winners)}.`;
+  }
+  if (messageType === "round_resolved") {
+    return `Round resolved. ${gameState?.phase === "finished" ? "Game over." : "Choose your next move."}`;
+  }
+  return "Game state updated.";
+}
+
 function renderExistingGames() {
   existingGamesList.innerHTML = "";
 
@@ -349,7 +530,7 @@ function renderExistingGames() {
     const content = document.createElement("div");
     const title = document.createElement("p");
     title.className = "game-card-title";
-    title.textContent = `${formatGameType(game.gameType)} (${game.playerCount} players)`;
+    title.textContent = `${formatGameType(game.gameType)} (${game.playerCount} players, ${formatGameMode(game.gameMode)})`;
 
     const detail = document.createElement("p");
     detail.className = "game-card-detail";
@@ -373,13 +554,22 @@ function renderExistingGames() {
 
 function updateLabels() {
   playerLabel.textContent = `Player: ${playerId || "not assigned"}`;
-  gameLabel.textContent = `Game type: ${gameType ? formatGameType(gameType) : "none"}`;
+  gameLabel.textContent = `Game: ${gameType ? formatGameType(gameType) : "none"}${
+    gameMode ? `, ${formatGameMode(gameMode)}` : ""
+  }`;
   playerCountLabel.textContent = `Players needed: ${playerCount || "none"}`;
   roomLabel.textContent = `Room: ${roomId || "none"}`;
 }
 
 function formatGameType(value) {
   return gameTypeNames[value] || value || "Unknown";
+}
+
+function formatGameMode(value) {
+  if (value === "team") {
+    return "Team vs team";
+  }
+  return "Free for all";
 }
 
 function formatPlayerIds(players) {

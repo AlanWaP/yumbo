@@ -102,6 +102,7 @@ Client messages:
 - `leave_queue`
 - `leave_room`
 - `request_lobby`
+- `game_move` with `payload.moveType` as `attack`, `defend`, or `gain_power`
 - `room_message` with arbitrary `payload`
 
 Server messages:
@@ -115,23 +116,39 @@ Server messages:
 - `not_queued`
 - `room_left`
 - `peer_left`
+- `game_move_accepted`
+- `game_state`
+- `round_resolved`
+- `game_finished`
 - `room_message`
 - `error`
 
-If `playerCount` is omitted, the backend defaults to 2. The backend matches
-players only when both `gameType` and `playerCount` are the same.
+If `playerCount` is omitted, the backend defaults to 2. `join_queue` also
+accepts optional `gameMode` as `free_for_all` or `team`. Team games currently
+use two teams and require an even player count. The backend matches players only
+when `gameType`, `playerCount`, and game mode settings are the same.
 
 Each `lobby_update.games` item includes:
 
 - `id`
 - `status` as `waiting` or `started`
 - `gameType`
+- `gameMode`
+- `teamCount`
 - `playerCount`
 - `joinedPlayerCount`
 - `players`
 
-The backend does not interpret game-specific payloads. It only relays
-`room_message.payload` to the other players in the same room.
+Rooms now include a basic authoritative round system that future games can
+extend. Each alive player submits one move per round:
+
+- `attack` targets an enemy player and spends power.
+- `defend` blocks incoming attack damage for the round.
+- `gain_power` increases power for future attacks.
+
+The backend resolves a round after every alive player moves, then broadcasts the
+new game state. `room_message.payload` remains available as an opaque extension
+channel for game-specific UI messages.
 
 ## Tests
 

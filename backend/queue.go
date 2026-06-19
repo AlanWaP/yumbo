@@ -2,7 +2,7 @@ package main
 
 import "fmt"
 
-func (h *hub) joinQueue(currentPlayer *player, gameType string, requestedPlayerCount int) {
+func (h *hub) joinQueue(currentPlayer *player, gameType string, requestedGameMode string, requestedTeamCount int, requestedPlayerCount int) {
 	h.mu.Lock()
 	var messages []outboundMessage
 
@@ -20,7 +20,21 @@ func (h *hub) joinQueue(currentPlayer *player, gameType string, requestedPlayerC
 		flushMessages(messages)
 		return
 	}
-	queueKey := createQueueKey(gameType, playerCount)
+	gameMode, teamCount, err := normalizeGameMode(requestedGameMode, playerCount)
+	if err != nil {
+		messages = append(messages, errorMessage(currentPlayer, err.Error()))
+		h.mu.Unlock()
+		flushMessages(messages)
+		return
+	}
+	if requestedTeamCount != 0 && requestedTeamCount != teamCount {
+		messages = append(messages, errorMessage(currentPlayer, fmt.Sprintf("teamCount must be %d for %s games.", teamCount, gameMode)))
+		h.mu.Unlock()
+		flushMessages(messages)
+		return
+	}
+
+	queueKey := createQueueKey(gameType, gameMode, teamCount, playerCount)
 
 	if currentPlayer.roomID != "" {
 		h.leaveRoomLocked(currentPlayer, "joined_queue", &messages)
@@ -34,6 +48,8 @@ func (h *hub) joinQueue(currentPlayer *player, gameType string, requestedPlayerC
 					Type:        "already_queued",
 					PlayerID:    currentPlayer.id,
 					GameType:    gameType,
+					GameMode:    gameMode,
+					TeamCount:   teamCount,
 					PlayerCount: playerCount,
 				},
 			})
@@ -45,6 +61,8 @@ func (h *hub) joinQueue(currentPlayer *player, gameType string, requestedPlayerC
 	}
 
 	currentPlayer.gameType = gameType
+	currentPlayer.gameMode = gameMode
+	currentPlayer.teamCount = teamCount
 	currentPlayer.playerCount = playerCount
 	currentPlayer.queueKey = queueKey
 	h.queues[queueKey] = append(h.queues[queueKey], currentPlayer.id)
@@ -54,6 +72,8 @@ func (h *hub) joinQueue(currentPlayer *player, gameType string, requestedPlayerC
 			Type:        "queued",
 			PlayerID:    currentPlayer.id,
 			GameType:    gameType,
+			GameMode:    gameMode,
+			TeamCount:   teamCount,
 			PlayerCount: playerCount,
 		},
 	})
@@ -80,8 +100,12 @@ func (h *hub) leaveQueue(currentPlayer *player) {
 	}
 
 	gameType := currentPlayer.gameType
+	gameMode := currentPlayer.gameMode
+	teamCount := currentPlayer.teamCount
 	playerCount := currentPlayer.playerCount
 	currentPlayer.gameType = ""
+	currentPlayer.gameMode = ""
+	currentPlayer.teamCount = 0
 	currentPlayer.playerCount = 0
 	currentPlayer.queueKey = ""
 	messages = append(messages, outboundMessage{
@@ -90,6 +114,8 @@ func (h *hub) leaveQueue(currentPlayer *player) {
 			Type:        "queue_left",
 			PlayerID:    currentPlayer.id,
 			GameType:    gameType,
+			GameMode:    gameMode,
+			TeamCount:   teamCount,
 			PlayerCount: playerCount,
 		},
 	})
@@ -128,7 +154,7 @@ func (h *hub) matchQueuedPlayersLocked(queueKey string, messages *[]outboundMess
 			continue
 		}
 
-		h.createRoomLocked(first.gameType, playerCount, roomPlayers, messages)
+		h.createRoomLocked(first.gameType, first.gameMode, first.teamCount, playerCount, roomPlayers, messages)
 	}
 }
 
@@ -177,6 +203,9 @@ func normalizePlayerCount(requestedPlayerCount int) int {
 	return requestedPlayerCount
 }
 
-func createQueueKey(gameType string, playerCount int) string {
-	return fmt.Sprintf("%s:%d", gameType, playerCount)
+func createQueueKey(gameType string, gameMode string, teamCount int, playerCount int) string {
+	if gameMode == "" || gameMode == gameModeFreeForAll {
+		return fmt.Sprintf("%s:%d", gameType, playerCount)
+	}
+	return fmt.Sprintf("%s:%d:%s:%d", gameType, playerCount, gameMode, teamCount)
 }

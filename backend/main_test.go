@@ -64,6 +64,28 @@ func lastLobbyMessage(t *testing.T, conn *recordingConn) serverMessage {
 	return serverMessage{}
 }
 
+func messageOfType(t *testing.T, conn *recordingConn, messageType string) serverMessage {
+	t.Helper()
+
+	for i := len(conn.messages) - 1; i >= 0; i-- {
+		if conn.messages[i].Type == messageType {
+			return conn.messages[i]
+		}
+	}
+	t.Fatalf("expected message type %q, got %#v", messageType, conn.messages)
+	return serverMessage{}
+}
+
+func decodePayload[T any](t *testing.T, payload json.RawMessage) T {
+	t.Helper()
+
+	var decoded T
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		t.Fatalf("failed to decode payload: %v", err)
+	}
+	return decoded
+}
+
 func TestJoinQueueRequiresGameType(t *testing.T) {
 	gameHub := newHub()
 	playerOne, playerOneConn := addTestPlayer(gameHub, "player_one")
@@ -198,6 +220,43 @@ func TestDifferentGameTypesDoNotMatch(t *testing.T) {
 	}
 }
 
+func TestDifferentGameModesDoNotMatch(t *testing.T) {
+	gameHub := newHub()
+	playerOne, playerOneConn := addTestPlayer(gameHub, "player_one")
+	playerTwo, playerTwoConn := addTestPlayer(gameHub, "player_two")
+	playerThree, playerThreeConn := addTestPlayer(gameHub, "player_three")
+	playerFour, playerFourConn := addTestPlayer(gameHub, "player_four")
+
+	gameHub.handleMessage(playerOne, clientMessage{Type: "join_queue", GameType: "rps", GameMode: gameModeFreeForAll, PlayerCount: 4})
+	gameHub.handleMessage(playerTwo, clientMessage{Type: "join_queue", GameType: "rps", GameMode: gameModeTeam, PlayerCount: 4})
+	gameHub.handleMessage(playerThree, clientMessage{Type: "join_queue", GameType: "rps", GameMode: gameModeFreeForAll, PlayerCount: 4})
+	gameHub.handleMessage(playerFour, clientMessage{Type: "join_queue", GameType: "rps", GameMode: gameModeTeam, PlayerCount: 4})
+
+	if len(gameHub.rooms) != 0 {
+		t.Fatalf("expected no rooms for mixed game modes, got %d", len(gameHub.rooms))
+	}
+	for _, conn := range []*recordingConn{playerOneConn, playerTwoConn, playerThreeConn, playerFourConn} {
+		if got := lastMessage(t, conn).Type; got != "queued" {
+			t.Fatalf("expected player to remain queued, got %q", got)
+		}
+	}
+}
+
+func TestTeamQueueRequiresEvenPlayerCount(t *testing.T) {
+	gameHub := newHub()
+	playerOne, playerOneConn := addTestPlayer(gameHub, "player_one")
+
+	gameHub.handleMessage(playerOne, clientMessage{Type: "join_queue", GameType: "rps", GameMode: gameModeTeam, PlayerCount: 3})
+
+	message := lastMessage(t, playerOneConn)
+	if message.Type != "error" {
+		t.Fatalf("expected error, got %q", message.Type)
+	}
+	if playerOne.queueKey != "" {
+		t.Fatalf("expected player to remain outside queues, got queue key %q", playerOne.queueKey)
+	}
+}
+
 func TestLeaveQueueRemovesPlayer(t *testing.T) {
 	gameHub := newHub()
 	playerOne, playerOneConn := addTestPlayer(gameHub, "player_one")
@@ -308,6 +367,65 @@ func TestRoomMessageRelaysPayloadToPeer(t *testing.T) {
 	}
 	if string(message.Payload) != string(payload) {
 		t.Fatalf("expected payload %s, got %s", payload, message.Payload)
+	}
+}
+
+func TestRoomCreatedIncludesInitialGameState(t *testing.T) {
+	gameHub := newHub()
+	playerOne, playerOneConn := addTestPlayer(gameHub, "player_one")
+	playerTwo, playerTwoConn := addTestPlayer(gameHub, "player_two")
+
+	gameHub.handleMessage(playerOne, clientMessage{Type: "join_queue", GameType: "rps"})
+	gameHub.handleMessage(playerTwo, clientMessage{Type: "join_queue", GameType: "rps"})
+
+	for _, conn := range []*recordingConn{playerOneConn, playerTwoConn} {
+		message := lastMessage(t, conn)
+		if message.Type != "room_created" {
+			t.Fatalf("expected room_created, got %q", message.Type)
+		}
+		gameState := decodePayload[gameSession](t, message.Payload)
+		if gameState.Round != 1 || gameState.Phase != gamePhaseWaitingForMoves {
+			t.Fatalf("unexpected game state: round=%d phase=%q", gameState.Round, gameState.Phase)
+		}
+		if len(gameState.Players) != 2 {
+			t.Fatalf("expected two game players, got %d", len(gameState.Players))
+		}
+	}
+}
+
+func TestGameMoveAcceptedAndRoundResolved(t *testing.T) {
+	gameHub := newHub()
+	playerOne, playerOneConn := addTestPlayer(gameHub, "player_one")
+	playerTwo, playerTwoConn := addTestPlayer(gameHub, "player_two")
+
+	gameHub.handleMessage(playerOne, clientMessage{Type: "join_queue", GameType: "rps"})
+	gameHub.handleMessage(playerTwo, clientMessage{Type: "join_queue", GameType: "rps"})
+	playerOneConn.messages = nil
+	playerTwoConn.messages = nil
+
+	playerOneMove := json.RawMessage(`{"moveType":"attack","targetId":"player_two"}`)
+	playerTwoMove := json.RawMessage(`{"moveType":"gain_power"}`)
+	gameHub.handleMessage(playerOne, clientMessage{Type: "game_move", Payload: playerOneMove})
+
+	if got := messageOfType(t, playerOneConn, "game_move_accepted").Type; got != "game_move_accepted" {
+		t.Fatalf("expected move acceptance for first player, got %q", got)
+	}
+	if got := lastMessage(t, playerTwoConn).Type; got != "game_state" {
+		t.Fatalf("expected game state broadcast while waiting, got %q", got)
+	}
+
+	gameHub.handleMessage(playerTwo, clientMessage{Type: "game_move", Payload: playerTwoMove})
+
+	if got := messageOfType(t, playerTwoConn, "game_move_accepted").Type; got != "game_move_accepted" {
+		t.Fatalf("expected move acceptance for second player, got %q", got)
+	}
+	resolved := messageOfType(t, playerOneConn, "round_resolved")
+	gameState := decodePayload[gameSession](t, resolved.Payload)
+	if gameState.Round != 2 {
+		t.Fatalf("expected round two after resolution, got %d", gameState.Round)
+	}
+	if got := gameState.Players["player_two"].Health; got != 8 {
+		t.Fatalf("expected player_two to take attack damage, got health %d", got)
 	}
 }
 
