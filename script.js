@@ -357,11 +357,15 @@ function renderExistingGames() {
       isWaiting ? "waiting" : "in room"
     }. ${isWaiting ? "Click to join." : "Already started."}`;
 
+    const players = document.createElement("p");
+    players.className = "game-card-players";
+    players.textContent = `Players: ${formatPlayerIds(game.players)}`;
+
     const status = document.createElement("span");
     status.className = `game-status ${game.status}`;
     status.textContent = isWaiting ? "Waiting" : "Started";
 
-    content.append(title, detail);
+    content.append(title, detail, players);
     card.append(content, status);
     existingGamesList.append(card);
   }
@@ -376,4 +380,8 @@ function updateLabels() {
 
 function formatGameType(value) {
   return gameTypeNames[value] || value || "Unknown";
+}
+
+function formatPlayerIds(players) {
+  return Array.isArray(players) && players.length > 0 ? players.join(", ") : "none";
 }

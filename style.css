@@ -221,6 +221,14 @@ button.game-card:hover:not(:disabled) {
   font-size: 0.92rem;
 }
 
+.game-card-players {
+  margin: 6px 0 0;
+  color: #33406a;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
 .game-status {
   align-self: start;
   padding: 6px 10px;
