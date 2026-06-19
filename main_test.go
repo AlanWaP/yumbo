@@ -43,10 +43,25 @@ func addTestPlayer(h *hub, id string) (*player, *recordingConn) {
 func lastMessage(t *testing.T, conn *recordingConn) serverMessage {
 	t.Helper()
 
-	if len(conn.messages) == 0 {
-		t.Fatal("expected at least one message")
+	for i := len(conn.messages) - 1; i >= 0; i-- {
+		if conn.messages[i].Type != "lobby_update" {
+			return conn.messages[i]
+		}
 	}
-	return conn.messages[len(conn.messages)-1]
+	t.Fatal("expected at least one non-lobby message")
+	return serverMessage{}
+}
+
+func lastLobbyMessage(t *testing.T, conn *recordingConn) serverMessage {
+	t.Helper()
+
+	for i := len(conn.messages) - 1; i >= 0; i-- {
+		if conn.messages[i].Type == "lobby_update" {
+			return conn.messages[i]
+		}
+	}
+	t.Fatal("expected at least one lobby message")
+	return serverMessage{}
 }
 
 func TestJoinQueueRequiresGameType(t *testing.T) {
@@ -202,9 +217,49 @@ func TestLeaveQueueRemovesPlayer(t *testing.T) {
 		t.Fatalf("expected first player queue key to clear, got %q", playerOne.queueKey)
 	}
 
-	message := playerOneConn.messages[1]
+	message := lastMessage(t, playerOneConn)
 	if message.Type != "queue_left" {
 		t.Fatalf("expected queue_left, got %q", message.Type)
+	}
+}
+
+func TestLobbyListsWaitingQueuesAndStartedRooms(t *testing.T) {
+	gameHub := newHub()
+	waitingPlayer, waitingConn := addTestPlayer(gameHub, "waiting_player")
+	playerOne, _ := addTestPlayer(gameHub, "player_one")
+	playerTwo, _ := addTestPlayer(gameHub, "player_two")
+
+	gameHub.handleMessage(waitingPlayer, clientMessage{Type: "join_queue", GameType: "cards", PlayerCount: 3})
+	gameHub.handleMessage(playerOne, clientMessage{Type: "join_queue", GameType: "rps"})
+	gameHub.handleMessage(playerTwo, clientMessage{Type: "join_queue", GameType: "rps"})
+
+	message := lastLobbyMessage(t, waitingConn)
+	if len(message.Games) != 2 {
+		t.Fatalf("expected waiting queue and started room, got %#v", message.Games)
+	}
+
+	var waitingGame, startedGame *gameSummary
+	for i := range message.Games {
+		switch message.Games[i].Status {
+		case "waiting":
+			waitingGame = &message.Games[i]
+		case "started":
+			startedGame = &message.Games[i]
+		}
+	}
+
+	if waitingGame == nil {
+		t.Fatal("expected waiting game in lobby")
+	}
+	if waitingGame.GameType != "cards" || waitingGame.PlayerCount != 3 || waitingGame.JoinedPlayerCount != 1 {
+		t.Fatalf("unexpected waiting game summary: %#v", *waitingGame)
+	}
+
+	if startedGame == nil {
+		t.Fatal("expected started game in lobby")
+	}
+	if startedGame.GameType != "rps" || startedGame.PlayerCount != 2 || startedGame.JoinedPlayerCount != 2 {
+		t.Fatalf("unexpected started game summary: %#v", *startedGame)
 	}
 }
 

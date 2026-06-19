@@ -15,7 +15,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -103,33 +104,45 @@ h1 {
   background: #f7f8fd;
 }
 
-.panel label {
+.panel h2 {
+  margin: 0 0 14px;
+  font-size: 1.25rem;
+}
+
+.panel > label {
   display: block;
   margin-bottom: 8px;
   font-weight: 700;
 }
 
-.lobby-labels {
-  display: grid;
-  grid-template-columns: 1fr 150px auto auto;
-  gap: 10px;
-}
-
 .input-row {
   display: flex;
+  align-items: end;
   gap: 10px;
 }
 
-.input-row input {
+.field {
+  display: grid;
   flex: 1;
   min-width: 0;
+  gap: 8px;
+}
+
+.field span {
+  font-weight: 700;
+}
+
+.input-row input,
+.input-row select {
+  width: 100%;
   padding: 12px 14px;
   border: 1px solid #cfd7eb;
   border-radius: 999px;
+  background: #ffffff;
 }
 
-.input-row .player-count-input {
-  flex: 0 0 150px;
+.input-row .player-count-field {
+  flex: 0 0 180px;
 }
 
 .input-row button,
@@ -141,6 +154,92 @@ h1 {
   margin: 10px 0 0;
   color: #667195;
   font-size: 0.92rem;
+}
+
+.existing-games {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid #dfe4f2;
+}
+
+.existing-games-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.secondary-button {
+  padding: 8px 12px;
+  background: #69738f;
+  font-size: 0.88rem;
+}
+
+.game-list {
+  display: grid;
+  gap: 10px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.game-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  width: 100%;
+  padding: 14px;
+  border: 1px solid #dfe4f2;
+  border-radius: 18px;
+  background: #ffffff;
+  color: #182033;
+  text-align: left;
+}
+
+button.game-card {
+  cursor: pointer;
+}
+
+button.game-card:hover:not(:disabled) {
+  border-color: #9cadff;
+  background: #f8faff;
+}
+
+.game-card:disabled {
+  opacity: 1;
+}
+
+.game-card-title {
+  margin: 0 0 4px;
+  font-weight: 800;
+}
+
+.game-card-detail {
+  margin: 0;
+  color: #667195;
+  font-size: 0.92rem;
+}
+
+.game-status {
+  align-self: start;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #edf1ff;
+  color: #33406a;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.game-status.started {
+  background: #f0f1f6;
+  color: #69738f;
+}
+
+.empty-list {
+  margin: 0;
+  color: #667195;
 }
 
 .player-panel {
@@ -200,11 +299,11 @@ h1 {
     flex-direction: column;
   }
 
-  .lobby-labels {
-    display: block;
+  .input-row .player-count-field {
+    flex-basis: auto;
   }
 
-  .input-row .player-count-input {
-    flex-basis: auto;
+  .game-card {
+    grid-template-columns: 1fr;
   }
 }

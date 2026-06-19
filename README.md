@@ -6,8 +6,8 @@ on your PC or another host.
 
 This first version is intentionally game-agnostic:
 
-- The frontend has connection, lobby, queue, room status, and an empty game
-  frame.
+- The frontend has connection, dropdown game creation, an existing-games lobby,
+  queue, room status, and an empty game frame.
 - The backend handles WebSocket connections, player IDs, game-type queues,
   configurable room sizes, room creation, room leaving, disconnect cleanup, and
   generic room messages.
@@ -15,32 +15,52 @@ This first version is intentionally game-agnostic:
 
 ## Local Development
 
-Start the backend:
+Requirements:
+
+- Go
+- Python 3
+
+Start everything with one command:
 
 ```sh
-go run .
+./scripts/dev.sh
 ```
 
-The backend listens at:
+The script starts the backend and frontend, opens the local page on macOS, and
+stops both servers when you press Ctrl-C.
+
+By default, the backend listens at:
 
 ```text
 ws://localhost:3000
 ```
 
-Serve the frontend from another terminal:
-
-```sh
-python3 -m http.server 8080
-```
-
-Open:
+and the frontend runs at:
 
 ```text
-http://localhost:8080
+http://localhost:8080/?server=ws://localhost:3000
 ```
 
-Open multiple browser tabs, connect them to `ws://localhost:3000`, enter the
-same game type and player count, and the players will be matched into a room.
+The `server` query parameter lets the frontend connect to the local WebSocket
+backend automatically.
+
+You can override the ports, backend URL, or browser launch:
+
+```sh
+PORT=3001 FRONTEND_PORT=8081 OPEN_BROWSER=0 ./scripts/dev.sh
+```
+
+Available environment variables:
+
+- `PORT`: backend WebSocket port, default `3000`
+- `FRONTEND_PORT`: static frontend port, default `8080`
+- `SERVER_URL`: backend URL passed to the frontend, default `ws://localhost:$PORT`
+- `OPEN_BROWSER`: set to `0` to skip opening the browser, default `1`
+
+Open multiple browser tabs, connect them to `ws://localhost:3000`, create a
+game from the dropdowns, or join a waiting game from the existing-games list.
+Players are matched into a room when enough players join the same game type and
+player count.
 
 ## GitHub Pages
 
@@ -73,11 +93,13 @@ Client messages:
 - `join_queue` with `gameType` and optional `playerCount`
 - `leave_queue`
 - `leave_room`
+- `request_lobby`
 - `room_message` with arbitrary `payload`
 
 Server messages:
 
 - `connected`
+- `lobby_update` with `games`
 - `queued`
 - `already_queued`
 - `room_created`
@@ -90,6 +112,15 @@ Server messages:
 
 If `playerCount` is omitted, the backend defaults to 2. The backend matches
 players only when both `gameType` and `playerCount` are the same.
+
+Each `lobby_update.games` item includes:
+
+- `id`
+- `status` as `waiting` or `started`
+- `gameType`
+- `playerCount`
+- `joinedPlayerCount`
+- `players`
 
 The backend does not interpret game-specific payloads. It only relays
 `room_message.payload` to the other players in the same room.

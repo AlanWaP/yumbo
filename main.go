@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sort"
 	"sync"
 
 	"github.com/gorilla/websocket"
@@ -53,9 +54,19 @@ type serverMessage struct {
 	GameType    string          `json:"gameType,omitempty"`
 	PlayerCount int             `json:"playerCount,omitempty"`
 	Players     []string        `json:"players,omitempty"`
+	Games       []gameSummary   `json:"games,omitempty"`
 	Message     string          `json:"message,omitempty"`
 	Reason      string          `json:"reason,omitempty"`
 	Payload     json.RawMessage `json:"payload,omitempty"`
+}
+
+type gameSummary struct {
+	ID                string   `json:"id"`
+	Status            string   `json:"status"`
+	GameType          string   `json:"gameType"`
+	PlayerCount       int      `json:"playerCount"`
+	JoinedPlayerCount int      `json:"joinedPlayerCount"`
+	Players           []string `json:"players,omitempty"`
 }
 
 type outboundMessage struct {
@@ -124,6 +135,7 @@ func handleWebSocket(gameHub *hub, w http.ResponseWriter, r *http.Request) {
 		Type:     "connected",
 		PlayerID: currentPlayer.id,
 	})
+	gameHub.sendLobby(currentPlayer)
 
 	defer gameHub.removePlayer(currentPlayer)
 
@@ -156,6 +168,8 @@ func (h *hub) handleMessage(currentPlayer *player, message clientMessage) {
 		h.leaveQueue(currentPlayer)
 	case "leave_room":
 		h.leaveRoom(currentPlayer, "left_room")
+	case "request_lobby":
+		h.sendLobby(currentPlayer)
 	case "room_message":
 		h.relayRoomMessage(currentPlayer, message.Payload)
 	default:
@@ -221,6 +235,7 @@ func (h *hub) joinQueue(currentPlayer *player, gameType string, requestedPlayerC
 
 	h.matchQueuedPlayersLocked(queueKey, &messages)
 
+	h.prependLobbyBroadcastLocked(&messages)
 	h.mu.Unlock()
 	flushMessages(messages)
 }
@@ -254,6 +269,7 @@ func (h *hub) leaveQueue(currentPlayer *player) {
 		},
 	})
 
+	h.prependLobbyBroadcastLocked(&messages)
 	h.mu.Unlock()
 	flushMessages(messages)
 }
@@ -262,6 +278,7 @@ func (h *hub) leaveRoom(currentPlayer *player, reason string) {
 	h.mu.Lock()
 	var messages []outboundMessage
 	h.leaveRoomLocked(currentPlayer, reason, &messages)
+	h.prependLobbyBroadcastLocked(&messages)
 	h.mu.Unlock()
 	flushMessages(messages)
 }
@@ -310,6 +327,7 @@ func (h *hub) removePlayer(currentPlayer *player) {
 	}
 	h.leaveRoomLocked(currentPlayer, "peer_disconnected", &messages)
 	delete(h.players, currentPlayer.id)
+	h.prependLobbyBroadcastLocked(&messages)
 
 	h.mu.Unlock()
 	flushMessages(messages)
@@ -460,6 +478,88 @@ func (h *hub) isQueuedLocked(playerID string, queueKey string) bool {
 		}
 	}
 	return false
+}
+
+func (h *hub) sendLobby(currentPlayer *player) {
+	h.mu.Lock()
+	message := outboundMessage{
+		player: currentPlayer,
+		body: serverMessage{
+			Type:  "lobby_update",
+			Games: h.gameSummariesLocked(),
+		},
+	}
+	h.mu.Unlock()
+	flushMessages([]outboundMessage{message})
+}
+
+func (h *hub) prependLobbyBroadcastLocked(messages *[]outboundMessage) {
+	games := h.gameSummariesLocked()
+	lobbyMessages := make([]outboundMessage, 0, len(h.players))
+	for _, currentPlayer := range h.players {
+		lobbyMessages = append(lobbyMessages, outboundMessage{
+			player: currentPlayer,
+			body: serverMessage{
+				Type:  "lobby_update",
+				Games: games,
+			},
+		})
+	}
+	*messages = append(lobbyMessages, *messages...)
+}
+
+func (h *hub) gameSummariesLocked() []gameSummary {
+	games := make([]gameSummary, 0, len(h.queues)+len(h.rooms))
+
+	for queueKey := range h.queues {
+		h.queues[queueKey] = h.compactQueueLocked(queueKey)
+		queue := h.queues[queueKey]
+		if len(queue) == 0 {
+			continue
+		}
+
+		firstPlayer := h.players[queue[0]]
+		if firstPlayer == nil {
+			continue
+		}
+
+		players := append([]string(nil), queue...)
+		games = append(games, gameSummary{
+			ID:                queueKey,
+			Status:            "waiting",
+			GameType:          firstPlayer.gameType,
+			PlayerCount:       firstPlayer.playerCount,
+			JoinedPlayerCount: len(players),
+			Players:           players,
+		})
+	}
+
+	for _, currentRoom := range h.rooms {
+		players := append([]string(nil), currentRoom.playerIDs...)
+		games = append(games, gameSummary{
+			ID:                currentRoom.id,
+			Status:            "started",
+			GameType:          currentRoom.gameType,
+			PlayerCount:       currentRoom.playerCount,
+			JoinedPlayerCount: len(players),
+			Players:           players,
+		})
+	}
+
+	sort.Slice(games, func(i, j int) bool {
+		if games[i].Status != games[j].Status {
+			return games[i].Status > games[j].Status
+		}
+		if games[i].GameType != games[j].GameType {
+			return games[i].GameType < games[j].GameType
+		}
+		if games[i].PlayerCount != games[j].PlayerCount {
+			return games[i].PlayerCount < games[j].PlayerCount
+		}
+		return games[i].ID < games[j].ID
+	})
+
+	return games
 }
 
 func normalizePlayerCount(requestedPlayerCount int) int {

@@ -12,7 +12,15 @@ const roomLabel = document.querySelector("#room-label");
 const joinQueueButton = document.querySelector("#join-queue-button");
 const leaveQueueButton = document.querySelector("#leave-queue-button");
 const leaveRoomButton = document.querySelector("#leave-room-button");
+const refreshLobbyButton = document.querySelector("#refresh-lobby-button");
+const existingGamesList = document.querySelector("#existing-games-list");
 const gameFrame = document.querySelector("#game-frame");
+
+const gameTypeNames = {
+  rps: "Rock Paper Scissors",
+  cards: "Cards",
+  trivia: "Trivia",
+};
 
 const urlParams = new URLSearchParams(window.location.search);
 const savedServerUrl = localStorage.getItem("yumboServerUrl");
@@ -32,11 +40,19 @@ let roomId;
 let gameType;
 let playerCount;
 let isQueued = false;
+let lobbyGames = [];
 
 serverUrlInput.value = defaultServerUrl;
-gameTypeInput.value = urlParams.get("game") || savedGameType || "";
+gameTypeInput.value = urlParams.get("game") || savedGameType || "rps";
+if (!gameTypeNames[gameTypeInput.value]) {
+  gameTypeInput.value = "rps";
+}
 playerCountInput.value = urlParams.get("players") || savedPlayerCount || "2";
+if (!playerCountInput.value) {
+  playerCountInput.value = "2";
+}
 updateLabels();
+renderExistingGames();
 
 if (defaultServerUrl) {
   connect(defaultServerUrl);
@@ -74,6 +90,10 @@ leaveQueueButton.addEventListener("click", () => {
 
 leaveRoomButton.addEventListener("click", () => {
   send({ type: "leave_room" });
+});
+
+refreshLobbyButton.addEventListener("click", () => {
+  requestLobby();
 });
 
 function connect(rawUrl) {
@@ -116,7 +136,9 @@ function connect(rawUrl) {
     gameType = undefined;
     playerCount = undefined;
     isQueued = false;
+    lobbyGames = [];
     updateLabels();
+    renderExistingGames();
     setStatus("Disconnected from multiplayer backend.");
     setGameFrame("Connection closed", "Reconnect when your backend server is available.");
   });
@@ -139,6 +161,12 @@ function handleServerMessage(rawMessage) {
   if (message.type === "connected") {
     playerId = message.playerId;
     updateLabels();
+    return;
+  }
+
+  if (message.type === "lobby_update") {
+    lobbyGames = Array.isArray(message.games) ? message.games : [];
+    renderExistingGames();
     return;
   }
 
@@ -219,9 +247,12 @@ function handleServerMessage(rawMessage) {
   }
 }
 
-function joinQueue() {
-  const requestedGameType = gameTypeInput.value.trim();
-  const requestedPlayerCount = Number.parseInt(playerCountInput.value, 10);
+function joinQueue(gameToJoin) {
+  const requestedGameType = gameToJoin?.gameType || gameTypeInput.value;
+  const requestedPlayerCount = Number.parseInt(
+    gameToJoin?.playerCount || playerCountInput.value,
+    10
+  );
 
   if (!socket || socket.readyState !== WebSocket.OPEN) {
     setStatus("Connect to the multiplayer backend first.");
@@ -244,6 +275,8 @@ function joinQueue() {
 
   localStorage.setItem("yumboGameType", requestedGameType);
   localStorage.setItem("yumboPlayerCount", String(requestedPlayerCount));
+  gameTypeInput.value = requestedGameType;
+  playerCountInput.value = String(requestedPlayerCount);
   gameType = requestedGameType;
   playerCount = requestedPlayerCount;
   roomId = undefined;
@@ -254,11 +287,18 @@ function joinQueue() {
     gameType: requestedGameType,
     playerCount: requestedPlayerCount,
   });
-  setStatus("Joining the waiting queue...");
-  setGameFrame("Joining Queue", "Waiting for the backend to confirm your place.");
+  setStatus(gameToJoin ? "Joining the selected game..." : "Creating a waiting game...");
+  setGameFrame(
+    gameToJoin ? "Joining Game" : "Creating Game",
+    "Waiting for the backend to confirm your place."
+  );
   joinQueueButton.hidden = true;
   leaveQueueButton.hidden = false;
   leaveRoomButton.hidden = true;
+}
+
+function requestLobby() {
+  send({ type: "request_lobby" });
 }
 
 function send(message) {
@@ -283,9 +323,57 @@ function setGameFrame(title, detail) {
   gameFrame.append(heading, paragraph);
 }
 
+function renderExistingGames() {
+  existingGamesList.innerHTML = "";
+
+  if (lobbyGames.length === 0) {
+    const emptyMessage = document.createElement("p");
+    emptyMessage.className = "empty-list";
+    emptyMessage.textContent = socket && socket.readyState === WebSocket.OPEN
+      ? "No games yet. Create one to open the lobby."
+      : "Connect to see waiting and started games.";
+    existingGamesList.append(emptyMessage);
+    return;
+  }
+
+  for (const game of lobbyGames) {
+    const isWaiting = game.status === "waiting";
+    const card = document.createElement(isWaiting ? "button" : "div");
+    card.className = "game-card";
+
+    if (isWaiting) {
+      card.type = "button";
+      card.addEventListener("click", () => joinQueue(game));
+    }
+
+    const content = document.createElement("div");
+    const title = document.createElement("p");
+    title.className = "game-card-title";
+    title.textContent = `${formatGameType(game.gameType)} (${game.playerCount} players)`;
+
+    const detail = document.createElement("p");
+    detail.className = "game-card-detail";
+    detail.textContent = `${game.joinedPlayerCount}/${game.playerCount} players ${
+      isWaiting ? "waiting" : "in room"
+    }. ${isWaiting ? "Click to join." : "Already started."}`;
+
+    const status = document.createElement("span");
+    status.className = `game-status ${game.status}`;
+    status.textContent = isWaiting ? "Waiting" : "Started";
+
+    content.append(title, detail);
+    card.append(content, status);
+    existingGamesList.append(card);
+  }
+}
+
 function updateLabels() {
   playerLabel.textContent = `Player: ${playerId || "not assigned"}`;
-  gameLabel.textContent = `Game type: ${gameType || "none"}`;
+  gameLabel.textContent = `Game type: ${gameType ? formatGameType(gameType) : "none"}`;
   playerCountLabel.textContent = `Players needed: ${playerCount || "none"}`;
   roomLabel.textContent = `Room: ${roomId || "none"}`;
+}
+
+function formatGameType(value) {
+  return gameTypeNames[value] || value || "Unknown";
 }
