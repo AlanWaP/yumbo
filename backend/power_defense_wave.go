@@ -12,6 +12,11 @@ const (
 	moveTypeAirCannon  = "air_cannon"
 )
 
+type powerDefenseWaveAttack struct {
+	AttackerID string
+	MoveType   string
+}
+
 func applyPowerDefenseWaveRules(rules gameRules) gameRules {
 	rules.StartingHealth = 1
 	rules.StartingPower = 0
@@ -73,7 +78,7 @@ func (g *gameSession) validateEnemyTarget(currentPlayer *gamePlayer, targetID st
 func (g *gameSession) resolvePowerDefenseWaveRound() {
 	aliveAtRoundStart := map[string]bool{}
 	moves := map[string]submittedMove{}
-	attackedPlayers := map[string]bool{}
+	incomingAttacks := map[string][]powerDefenseWaveAttack{}
 	eliminatedPlayers := map[string]string{}
 	superBlasters := []string{}
 	results := []roundResult{}
@@ -108,7 +113,10 @@ func (g *gameSession) resolvePowerDefenseWaveRound() {
 		case moveTypeWave:
 			player.Power -= g.Rules.WaveCost
 			player.DefenseStreak = 0
-			attackedPlayers[move.TargetID] = true
+			incomingAttacks[move.TargetID] = append(incomingAttacks[move.TargetID], powerDefenseWaveAttack{
+				AttackerID: playerID,
+				MoveType:   moveTypeWave,
+			})
 			results = append(results, roundResult{
 				PlayerID: playerID,
 				MoveType: move.Type,
@@ -144,7 +152,10 @@ func (g *gameSession) resolvePowerDefenseWaveRound() {
 			if targetID == blasterID || !aliveAtRoundStart[targetID] || target.TeamID == blaster.TeamID {
 				continue
 			}
-			attackedPlayers[targetID] = true
+			incomingAttacks[targetID] = append(incomingAttacks[targetID], powerDefenseWaveAttack{
+				AttackerID: blasterID,
+				MoveType:   moveTypeSuperBlast,
+			})
 		}
 	}
 
@@ -158,8 +169,8 @@ func (g *gameSession) resolvePowerDefenseWaveRound() {
 		}
 	}
 
-	for playerID, wasAttacked := range attackedPlayers {
-		if !wasAttacked || !aliveAtRoundStart[playerID] {
+	for playerID, attacks := range incomingAttacks {
+		if len(attacks) == 0 || !aliveAtRoundStart[playerID] {
 			continue
 		}
 		move := moves[playerID]
@@ -167,15 +178,9 @@ func (g *gameSession) resolvePowerDefenseWaveRound() {
 			continue
 		}
 
-		reason := "attacked"
-		if move.Type == moveTypePower {
-			reason = "powered up while attacked"
-		}
-		if move.Type == moveTypeWave && len(superBlasters) > 0 {
-			reason = "wave was overpowered by super blast"
-		}
-		if move.Type == moveTypeDefense && len(superBlasters) > 1 {
-			reason = "defense was broken by multiple super blasts"
+		reason := g.powerDefenseWaveEliminationReason(move, attacks, superBlasters)
+		if reason == "" {
+			continue
 		}
 		eliminatedPlayers[playerID] = reason
 	}
@@ -206,4 +211,48 @@ func (g *gameSession) resolvePowerDefenseWaveRound() {
 	}
 
 	g.startNextRound()
+}
+
+func (g *gameSession) powerDefenseWaveEliminationReason(move submittedMove, attacks []powerDefenseWaveAttack, superBlasters []string) string {
+	hasSuperBlastAttack := false
+	for _, attack := range attacks {
+		if attack.MoveType == moveTypeSuperBlast {
+			hasSuperBlastAttack = true
+			break
+		}
+	}
+
+	switch move.Type {
+	case moveTypePower:
+		if len(attacks) > 0 {
+			return "powered up while attacked"
+		}
+	case moveTypeDefense:
+		if len(superBlasters) > 1 {
+			return "defense was broken by multiple super blasts"
+		}
+	case moveTypeWave:
+		if hasSuperBlastAttack {
+			return "wave was overpowered by super blast"
+		}
+		for _, attack := range attacks {
+			if attack.MoveType == moveTypeWave && move.TargetID != attack.AttackerID {
+				return "wave did not offset incoming wave"
+			}
+		}
+	case moveTypeSuperBlast:
+		if hasSuperBlastAttack {
+			return "hit by super blast"
+		}
+	case moveTypeAirCannon:
+		if len(attacks) > 0 {
+			return "attacked while using air cannon"
+		}
+	default:
+		if len(attacks) > 0 {
+			return "attacked"
+		}
+	}
+
+	return ""
 }
