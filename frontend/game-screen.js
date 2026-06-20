@@ -11,6 +11,7 @@
     formatPlayerIds,
   }) {
     let currentGameId;
+    let activeInfoTab = "log";
     const gameLogEntries = [];
     const loggedRoundKeys = new Set();
     const loggedResultKeys = new Set();
@@ -97,7 +98,7 @@
 
       playerPanel.append(playerPanelTitle, playerGrid);
       content.append(playerPanel, createActionPanel(gameState));
-      board.append(createGameLogPanel(), content);
+      board.append(createGameInfoPanel(gameState), content);
       frame.append(board);
       scrollLogToBottom();
     }
@@ -153,32 +154,157 @@
       gameLogEntries.push({ type: "result", text: `Winner: ${formatPlayerIds(gameState.winners)}` });
     }
 
-    function createGameLogPanel() {
+    function createGameInfoPanel(gameState) {
       const panel = document.createElement("section");
-      panel.className = "game-log-panel";
+      panel.className = "game-info-panel";
 
-      const title = document.createElement("h3");
-      title.textContent = "Game log";
+      const tabs = document.createElement("div");
+      tabs.className = "game-info-tabs";
+      tabs.role = "tablist";
 
-      const frame = document.createElement("div");
-      frame.className = "game-log-frame";
+      const logTab = createInfoTab("log", "Game log");
+      const ruleTab = createInfoTab("rule", "Game rule");
+      tabs.append(logTab, ruleTab);
+
+      const content = activeInfoTab === "rule"
+        ? createGameRuleFrame(gameState)
+        : createGameLogFrame();
+
+      panel.append(tabs, content);
+      return panel;
+    }
+
+    function createInfoTab(tabId, label) {
+      const tab = document.createElement("button");
+      tab.type = "button";
+      tab.className = `game-info-tab${activeInfoTab === tabId ? " active" : ""}`;
+      tab.role = "tab";
+      tab.ariaSelected = String(activeInfoTab === tabId);
+      tab.textContent = label;
+      tab.addEventListener("click", () => {
+        activeInfoTab = tabId;
+        renderGameState(getCurrentGameState());
+      });
+      return tab;
+    }
+
+    function createGameLogFrame() {
+      const logFrame = document.createElement("div");
+      logFrame.className = "game-log-frame";
 
       if (gameLogEntries.length === 0) {
         const empty = document.createElement("p");
         empty.className = "game-log-empty";
         empty.textContent = "Round results will appear here.";
-        frame.append(empty);
+        logFrame.append(empty);
       } else {
         for (const entry of gameLogEntries) {
           const line = document.createElement("p");
           line.className = entry.type === "round" ? "game-log-round" : "game-log-line";
           line.textContent = entry.text;
-          frame.append(line);
+          logFrame.append(line);
         }
       }
 
-      panel.append(title, frame);
-      return panel;
+      return logFrame;
+    }
+
+    function createGameRuleFrame(gameState) {
+      const ruleFrame = document.createElement("div");
+      ruleFrame.className = "game-rule-frame";
+
+      if (gameState.gameType === "power_defense_wave") {
+        const rules = gameState.rules;
+        const sections = [
+          {
+            title: "Round flow",
+            items: [
+              "All alive players choose one move each round.",
+              "Moves resolve simultaneously after every alive player has moved.",
+              "A move's survival is determined by the move chosen and incoming attacks, not by who dies later in the same round.",
+              "The game ends when only one player, or one team, remains alive.",
+            ],
+          },
+          {
+            title: "Power",
+            items: [
+              `Gain ${rules.gainPowerAmount} power.`,
+              "Power does not target another player.",
+              "A player using Power is eliminated if attacked by Wave or Super Blast in the same round.",
+            ],
+          },
+          {
+            title: "Defense",
+            items: [
+              "Defense does not target another player.",
+              "Defense survives an incoming Wave or one Super Blast.",
+              "Multiple Super Blasts break Defense.",
+              "A player cannot use Defense three rounds in a row.",
+            ],
+          },
+          {
+            title: "Wave",
+            items: [
+              `Costs ${rules.waveCost} power and targets one enemy.`,
+              "Mutual Waves offset only when both players target each other.",
+              "A Wave aimed somewhere else does not protect against an incoming Wave.",
+              "Wave loses to Super Blast.",
+            ],
+          },
+          {
+            title: "Super Blast",
+            items: [
+              `Costs ${rules.superBlastCost} power.`,
+              "Targets every enemy player.",
+              "Super Blast users are not eliminated by other Super Blasts.",
+              "Air Cannon is the direct counter to Super Blast.",
+            ],
+          },
+          {
+            title: "Air Cannon",
+            items: [
+              "Targets one enemy player.",
+              "If the target used Super Blast, Air Cannon eliminates that target.",
+              "Air Cannon survives the targeted Super Blast.",
+              "Air Cannon does not block unrelated incoming attacks from other players.",
+            ],
+          },
+        ];
+
+        for (const section of sections) {
+          ruleFrame.append(createRuleSection(section.title, section.items));
+        }
+      } else {
+        ruleFrame.append(
+          createRuleSection("Basic rules", [
+            "All alive players choose one move each round.",
+            "Attack costs power and targets one enemy.",
+            "Defend blocks incoming attacks for the round.",
+            "Gain power increases your available power for future attacks.",
+            "The game ends when only one player, or one team, remains alive.",
+          ])
+        );
+      }
+
+      return ruleFrame;
+    }
+
+    function createRuleSection(title, items) {
+      const section = document.createElement("section");
+      section.className = "game-rule-section";
+
+      const heading = document.createElement("h4");
+      heading.textContent = title;
+
+      const list = document.createElement("ul");
+      for (const itemText of items) {
+        const item = document.createElement("li");
+        item.textContent = itemText;
+        list.append(item);
+      }
+
+      section.append(heading, list);
+      return section;
     }
 
     function scrollLogToBottom() {

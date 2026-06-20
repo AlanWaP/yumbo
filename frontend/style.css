@@ -295,17 +295,31 @@ button.game-card:hover:not(:disabled) {
   gap: 18px;
 }
 
-.game-log-panel {
+.game-info-panel {
   display: grid;
   gap: 10px;
 }
 
-.game-log-panel h3 {
-  margin: 0;
-  color: #182033;
+.game-info-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
-.game-log-frame {
+.game-info-tab {
+  padding: 8px 14px;
+  background: #e8edff;
+  color: #33406a;
+  font-size: 0.9rem;
+}
+
+.game-info-tab.active {
+  background: #3a63f3;
+  color: #ffffff;
+}
+
+.game-log-frame,
+.game-rule-frame {
   display: grid;
   max-height: 180px;
   min-height: 120px;
@@ -320,7 +334,8 @@ button.game-card:hover:not(:disabled) {
   font-size: 0.88rem;
 }
 
-.game-log-frame p {
+.game-log-frame p,
+.game-rule-frame p {
   max-width: none;
   margin: 0;
 }
@@ -332,6 +347,30 @@ button.game-card:hover:not(:disabled) {
 
 .game-log-line,
 .game-log-empty {
+  color: #4b587c;
+}
+
+.game-rule-frame {
+  align-content: start;
+  font-family: inherit;
+}
+
+.game-rule-section {
+  display: grid;
+  gap: 6px;
+}
+
+.game-rule-section h4 {
+  margin: 0;
+  color: #182033;
+  font-size: 0.95rem;
+}
+
+.game-rule-section ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 20px;
   color: #4b587c;
 }
 
