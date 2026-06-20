@@ -77,12 +77,23 @@ button:disabled {
 }
 
 .card {
+  position: relative;
   width: min(780px, 100%);
   padding: 32px;
   border: 1px solid #dfe4f2;
   border-radius: 28px;
   background: #ffffff;
   box-shadow: 0 24px 80px rgba(24, 32, 51, 0.12);
+}
+
+.language-toggle {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  padding: 8px 14px;
+  background: #e8edff;
+  color: #33406a;
+  font-size: 0.9rem;
 }
 
 h1 {
@@ -484,6 +495,11 @@ button.game-card:hover:not(:disabled) {
 @media (max-width: 640px) {
   .card {
     padding: 24px;
+  }
+
+  .language-toggle {
+    position: static;
+    margin-bottom: 14px;
   }
 
   .input-row {

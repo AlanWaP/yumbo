@@ -8,6 +8,7 @@
     formatGameType,
     formatGameMode,
     formatPlayerIds,
+    t,
   }) {
     function show() {
       panel.hidden = false;
@@ -25,8 +26,8 @@
         const emptyMessage = document.createElement("p");
         emptyMessage.className = "empty-list";
         emptyMessage.textContent = isConnected()
-          ? "No games yet. Create one to open the waiting room."
-          : "Connect to see waiting and started games.";
+          ? t("lobby.emptyConnected")
+          : t("lobby.emptyDisconnected");
         existingGamesList.append(emptyMessage);
         return;
       }
@@ -44,21 +45,28 @@
         const content = document.createElement("div");
         const title = document.createElement("p");
         title.className = "game-card-title";
-        title.textContent = `${formatGameType(game.gameType)} (${game.playerCount} players, ${formatGameMode(game.gameMode)})`;
+        title.textContent = t("lobby.cardTitle", {
+          gameType: formatGameType(game.gameType),
+          playerCount: game.playerCount,
+          gameMode: formatGameMode(game.gameMode),
+        });
 
         const detail = document.createElement("p");
         detail.className = "game-card-detail";
-        detail.textContent = `${game.joinedPlayerCount}/${game.playerCount} players ${
-          isWaiting ? "waiting" : "in room"
-        }. ${isWaiting ? "Click to join." : "Already started."}`;
+        detail.textContent = t("lobby.cardDetail", {
+          joinedPlayerCount: game.joinedPlayerCount,
+          playerCount: game.playerCount,
+          status: isWaiting ? t("lobby.waiting") : t("lobby.inRoom"),
+          action: isWaiting ? t("lobby.clickToJoin") : t("lobby.alreadyStarted"),
+        });
 
         const players = document.createElement("p");
         players.className = "game-card-players";
-        players.textContent = `Players: ${formatPlayerIds(game.players)}`;
+        players.textContent = t("lobby.players", { players: formatPlayerIds(game.players) });
 
         const status = document.createElement("span");
         status.className = `game-status ${game.status}`;
-        status.textContent = isWaiting ? "Waiting" : "Started";
+        status.textContent = isWaiting ? t("lobby.statusWaiting") : t("lobby.statusStarted");
 
         content.append(title, detail, players);
         card.append(content, status);

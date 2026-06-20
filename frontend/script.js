@@ -10,19 +10,16 @@ const playerLabel = document.querySelector("#player-label");
 const gameLabel = document.querySelector("#game-label");
 const playerCountLabel = document.querySelector("#player-count-label");
 const roomLabel = document.querySelector("#room-label");
+const languageToggleButton = document.querySelector("#language-toggle-button");
 const joinQueueButton = document.querySelector("#join-queue-button");
 const leaveQueueButton = document.querySelector("#leave-queue-button");
 const leaveRoomButton = document.querySelector("#leave-room-button");
 const refreshLobbyButton = document.querySelector("#refresh-lobby-button");
 const existingGamesList = document.querySelector("#existing-games-list");
 const gameFrame = document.querySelector("#game-frame");
+const { t } = window.yumboI18n;
 
-const gameTypeNames = {
-  power_defense_wave: "Power, Defense and Wave",
-  rps: "Rock Paper Scissors",
-  cards: "Cards",
-  trivia: "Trivia",
-};
+const gameTypes = new Set(["power_defense_wave", "rps", "cards", "trivia"]);
 
 const urlParams = new URLSearchParams(window.location.search);
 const savedServerUrl = localStorage.getItem("yumboServerUrl");
@@ -49,6 +46,7 @@ let currentGameState;
 let submittedRound;
 let submittedMove;
 let selectedTargetId;
+let currentStatus = { key: "status.enterBackend" };
 
 const waitingRoom = window.createWaitingRoom({
   panel: lobbyPanel,
@@ -59,6 +57,7 @@ const waitingRoom = window.createWaitingRoom({
   formatGameType,
   formatGameMode,
   formatPlayerIds,
+  t,
 });
 
 const gameScreen = window.createGameScreen({
@@ -73,11 +72,12 @@ const gameScreen = window.createGameScreen({
   getCurrentGameState: () => currentGameState,
   sendGameMove,
   formatPlayerIds,
+  t,
 });
 
 serverUrlInput.value = defaultServerUrl;
 gameTypeInput.value = urlParams.get("game") || savedGameType || "power_defense_wave";
-if (!gameTypeNames[gameTypeInput.value]) {
+if (!gameTypes.has(gameTypeInput.value)) {
   gameTypeInput.value = "rps";
 }
 gameModeInput.value = urlParams.get("mode") || savedGameMode || "free_for_all";
@@ -88,6 +88,10 @@ playerCountInput.value = urlParams.get("players") || savedPlayerCount || "2";
 if (!playerCountInput.value) {
   playerCountInput.value = "2";
 }
+window.yumboI18n.applyStaticTranslations();
+updateLanguageToggle();
+updatePlayerCountOptions();
+refreshStatus();
 updateLabels();
 renderExistingGames();
 
@@ -133,9 +137,22 @@ refreshLobbyButton.addEventListener("click", () => {
   requestLobby();
 });
 
+languageToggleButton.addEventListener("click", () => {
+  window.yumboI18n.toggleLanguage();
+});
+
+window.yumboI18n.onLanguageChange(() => {
+  updateLanguageToggle();
+  updatePlayerCountOptions();
+  refreshStatus();
+  updateLabels();
+  renderExistingGames();
+  renderGameState(currentGameState);
+});
+
 function connect(rawUrl) {
   if (!rawUrl) {
-    setStatus("Enter your backend WebSocket URL to start.");
+    setStatus("status.enterBackendToStart");
     return;
   }
 
@@ -143,7 +160,7 @@ function connect(rawUrl) {
     socket.close();
   }
 
-  setStatus("Connecting to multiplayer backend...");
+  setStatus("status.connecting");
   connectButton.disabled = true;
   localStorage.setItem("yumboServerUrl", rawUrl);
 
@@ -153,7 +170,7 @@ function connect(rawUrl) {
     connectionPanel.hidden = true;
     showWaitingRoom();
     connectButton.disabled = false;
-    setStatus("Connected. Choose a game type and enter the queue.");
+    setStatus("status.connected");
   });
 
   socket.addEventListener("message", (event) => {
@@ -180,12 +197,12 @@ function connect(rawUrl) {
     selectedTargetId = undefined;
     updateLabels();
     renderExistingGames();
-    setStatus("Disconnected from multiplayer backend.");
+    setStatus("status.disconnected");
     hideGameSurfaces();
   });
 
   socket.addEventListener("error", () => {
-    setStatus("Could not connect. Check the backend URL and server status.");
+    setStatus("status.connectionFailed");
     connectButton.disabled = false;
   });
 }
@@ -223,7 +240,7 @@ function handleServerMessage(rawMessage) {
     submittedMove = undefined;
     selectedTargetId = undefined;
     updateLabels();
-    setStatus("Waiting for players...");
+    setStatus("status.waitingPlayers");
     showWaitingRoom();
     joinQueueButton.hidden = true;
     leaveQueueButton.hidden = false;
@@ -239,7 +256,7 @@ function handleServerMessage(rawMessage) {
     roomId = message.roomId;
     isQueued = false;
     updateLabels();
-    setStatus("Room created. Choose a move for round one.");
+    setStatus("status.roomCreated");
     currentGameState = message.payload;
     submittedRound = undefined;
     submittedMove = undefined;
@@ -261,7 +278,7 @@ function handleServerMessage(rawMessage) {
     submittedMove = undefined;
     selectedTargetId = undefined;
     updateLabels();
-    setStatus("You are not in the queue.");
+    setStatus("status.notInQueue");
     showWaitingRoom();
     joinQueueButton.hidden = false;
     leaveQueueButton.hidden = true;
@@ -280,7 +297,7 @@ function handleServerMessage(rawMessage) {
     submittedMove = undefined;
     selectedTargetId = undefined;
     updateLabels();
-    setStatus(message.type === "peer_left" ? "The other player left." : "You left the room.");
+    setStatus(message.type === "peer_left" ? "status.peerLeft" : "status.leftRoom");
     showWaitingRoom();
     joinQueueButton.hidden = false;
     leaveQueueButton.hidden = true;
@@ -289,13 +306,13 @@ function handleServerMessage(rawMessage) {
   }
 
   if (message.type === "room_message") {
-    setStatus("Received a room message for the active game module.");
+    setStatus("status.roomMessage");
     return;
   }
 
   if (message.type === "game_move_accepted") {
     submittedRound = message.payload?.round;
-    setStatus("Move submitted. Waiting for the rest of the round.");
+    setStatus("status.moveSubmitted");
     renderGameState(currentGameState);
     return;
   }
@@ -311,13 +328,13 @@ function handleServerMessage(rawMessage) {
       submittedMove = undefined;
       selectedTargetId = undefined;
     }
-    setStatus(formatGameStatus(message.type, currentGameState));
+    setGameStatus(message.type, currentGameState);
     renderGameState(currentGameState);
     return;
   }
 
   if (message.type === "error") {
-    setStatus(message.message || "The server reported an error.");
+    setRawStatus(message.message || t("status.serverError"));
   }
 }
 
@@ -330,12 +347,12 @@ function joinQueue(gameToJoin) {
   );
 
   if (!socket || socket.readyState !== WebSocket.OPEN) {
-    setStatus("Connect to the multiplayer backend first.");
+    setStatus("status.connectFirst");
     return;
   }
 
   if (!requestedGameType) {
-    setStatus("Enter a game type before joining the queue.");
+    setStatus("status.enterGameType");
     return;
   }
 
@@ -344,7 +361,7 @@ function joinQueue(gameToJoin) {
     requestedPlayerCount < 2 ||
     requestedPlayerCount > 16
   ) {
-    setStatus("Players needed must be a number between 2 and 16.");
+    setStatus("status.invalidPlayerCount");
     return;
   }
 
@@ -366,7 +383,7 @@ function joinQueue(gameToJoin) {
     gameMode: requestedGameMode,
     playerCount: requestedPlayerCount,
   });
-  setStatus(gameToJoin ? "Joining the selected game..." : "Creating a waiting game...");
+  setStatus(gameToJoin ? "status.joiningSelected" : "status.creatingGame");
   showWaitingRoom();
   joinQueueButton.hidden = true;
   leaveQueueButton.hidden = false;
@@ -383,8 +400,18 @@ function send(message) {
   }
 }
 
-function setStatus(text) {
-  statusEl.textContent = text;
+function setStatus(key, values = {}) {
+  currentStatus = { key, values };
+  refreshStatus();
+}
+
+function setRawStatus(text) {
+  currentStatus = { text };
+  refreshStatus();
+}
+
+function refreshStatus() {
+  statusEl.textContent = currentStatus.text || t(currentStatus.key, currentStatus.values);
 }
 
 function showWaitingRoom() {
@@ -420,40 +447,64 @@ function sendGameMove(moveType, targetId) {
   });
 }
 
-function formatGameStatus(messageType, gameState) {
+function setGameStatus(messageType, gameState) {
   if (messageType === "game_finished") {
-    return `Game finished. Winner: ${formatPlayerIds(gameState?.winners)}.`;
+    setStatus("status.gameFinishedWinner", { winners: formatPlayerIds(gameState?.winners) });
+    return;
   }
   if (messageType === "round_resolved") {
-    return `Round resolved. ${gameState?.phase === "finished" ? "Game over." : "Choose your next move."}`;
+    setStatus(gameState?.phase === "finished" ? "status.roundResolvedGameOver" : "status.roundResolvedNextMove");
+    return;
   }
-  return "Game state updated.";
+  setStatus("status.gameUpdated");
 }
 
 function renderExistingGames() {
   waitingRoom.renderExistingGames();
 }
 
+function updateLanguageToggle() {
+  languageToggleButton.textContent = t("language.toggle");
+  languageToggleButton.title = t("language.current");
+  languageToggleButton.setAttribute("aria-label", t("language.switch"));
+}
+
+function updatePlayerCountOptions() {
+  for (const option of playerCountInput.options) {
+    option.textContent = t("lobby.playerCountOption", { count: option.value });
+  }
+}
+
 function updateLabels() {
-  playerLabel.textContent = `Player: ${playerId || "not assigned"}`;
-  gameLabel.textContent = `Game: ${gameType ? formatGameType(gameType) : "none"}${
-    gameMode ? `, ${formatGameMode(gameMode)}` : ""
-  }`;
-  playerCountLabel.textContent = `Players needed: ${playerCount || "none"}`;
-  roomLabel.textContent = `Room: ${roomId || "none"}`;
+  playerLabel.textContent = t("labels.player", {
+    player: playerId || t("labels.playerUnassigned"),
+  });
+  gameLabel.textContent = t("labels.game", {
+    game: gameType ? formatGameType(gameType) : t("labels.gameNone"),
+    mode: gameMode ? t("labels.gameModeSuffix", { mode: formatGameMode(gameMode) }) : "",
+  });
+  playerCountLabel.textContent = t("labels.playersNeeded", {
+    count: playerCount || t("labels.gameNone"),
+  });
+  roomLabel.textContent = t("labels.room", { room: roomId || t("labels.gameNone") });
 }
 
 function formatGameType(value) {
-  return gameTypeNames[value] || value || "Unknown";
+  if (!value) {
+    return t("gameType.unknown");
+  }
+
+  const translatedGameType = t(`gameType.${value}`);
+  return translatedGameType === `gameType.${value}` ? value : translatedGameType;
 }
 
 function formatGameMode(value) {
   if (value === "team") {
-    return "Team vs team";
+    return t("gameMode.team");
   }
-  return "Free for all";
+  return t("gameMode.free_for_all");
 }
 
 function formatPlayerIds(players) {
-  return Array.isArray(players) && players.length > 0 ? players.join(", ") : "none";
+  return Array.isArray(players) && players.length > 0 ? players.join(", ") : t("labels.gameNone");
 }

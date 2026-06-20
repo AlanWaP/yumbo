@@ -9,6 +9,7 @@
     getCurrentGameState,
     sendGameMove,
     formatPlayerIds,
+    t,
   }) {
     let currentGameId;
     let activeInfoTab = "log";
@@ -43,7 +44,7 @@
       frame.innerHTML = "";
 
       if (!gameState) {
-        setPlaceholder("Room Ready", "Waiting for the first game state from the backend.");
+        setPlaceholder(t("game.readyTitle"), t("game.readyDetail"));
         return;
       }
       syncGameLog(gameState);
@@ -66,7 +67,7 @@
       const playerPanel = document.createElement("section");
       playerPanel.className = "player-status-panel";
       const playerPanelTitle = document.createElement("h3");
-      playerPanelTitle.textContent = "Players";
+      playerPanelTitle.textContent = t("game.players");
 
       const playerGrid = document.createElement("div");
       playerGrid.className = "game-player-grid";
@@ -90,12 +91,12 @@
           });
         }
         card.innerHTML = `
-          <strong>${player.id === getPlayerId() ? "You" : player.id}</strong>
-          <span>Team: ${player.teamId}</span>
-          <span>Health: ${player.health}</span>
-          <span>Power: ${player.power}</span>
-          <span>Defense streak: ${player.defenseStreak || 0}</span>
-          <span>${player.alive ? "Alive" : "Eliminated"}</span>
+          <strong>${player.id === getPlayerId() ? t("game.you") : player.id}</strong>
+          <span>${t("game.team", { team: player.teamId })}</span>
+          <span>${t("game.health", { health: player.health })}</span>
+          <span>${t("game.powerStat", { power: player.power })}</span>
+          <span>${t("game.defenseStreak", { streak: player.defenseStreak || 0 })}</span>
+          <span>${player.alive ? t("game.alive") : t("game.eliminated")}</span>
         `;
         playerGrid.append(card);
       }
@@ -126,7 +127,7 @@
           loggedResultKeys.add(resultKey);
           appendRoundMarker(resultRound);
           for (const result of gameState.lastResults) {
-            gameLogEntries.push({ type: "result", text: formatResultLine(result) });
+            gameLogEntries.push({ type: "result", result });
           }
         }
       }
@@ -145,7 +146,7 @@
       }
 
       loggedRoundKeys.add(roundKey);
-      gameLogEntries.push({ type: "round", text: `Round ${round}` });
+      gameLogEntries.push({ type: "round", key: "game.round", values: { round } });
     }
 
     function appendFinishedMarker(gameState) {
@@ -155,8 +156,12 @@
       }
 
       loggedFinishKeys.add(finishKey);
-      gameLogEntries.push({ type: "round", text: "Game finished" });
-      gameLogEntries.push({ type: "result", text: `Winner: ${formatPlayerIds(gameState.winners)}` });
+      gameLogEntries.push({ type: "round", key: "game.finished" });
+      gameLogEntries.push({
+        type: "round",
+        key: "game.winner",
+        values: { winners: formatPlayerIds(gameState.winners) },
+      });
     }
 
     function createGameInfoPanel(gameState) {
@@ -167,8 +172,8 @@
       tabs.className = "game-info-tabs";
       tabs.role = "tablist";
 
-      const logTab = createInfoTab("log", "Game log");
-      const ruleTab = createInfoTab("rule", "Game rule");
+      const logTab = createInfoTab("log", t("game.logTab"));
+      const ruleTab = createInfoTab("rule", t("game.ruleTab"));
       tabs.append(logTab, ruleTab);
 
       const content = activeInfoTab === "rule"
@@ -200,13 +205,13 @@
       if (gameLogEntries.length === 0) {
         const empty = document.createElement("p");
         empty.className = "game-log-empty";
-        empty.textContent = "Round results will appear here.";
+        empty.textContent = t("game.logEmpty");
         logFrame.append(empty);
       } else {
         for (const entry of gameLogEntries) {
           const line = document.createElement("p");
           line.className = entry.type === "round" ? "game-log-round" : "game-log-line";
-          line.textContent = entry.text;
+          line.textContent = formatGameLogEntry(entry);
           logFrame.append(line);
         }
       }
@@ -222,56 +227,56 @@
         const rules = gameState.rules;
         const sections = [
           {
-            title: "Round flow",
+            title: t("rules.roundFlow"),
             items: [
-              "All alive players choose one move each round.",
-              "Moves resolve simultaneously after every alive player has moved.",
-              "A move's survival is determined by the move chosen and incoming attacks, not by who dies later in the same round.",
-              "The game ends when only one player, or one team, remains alive.",
+              t("rules.allAliveChoose"),
+              t("rules.simultaneous"),
+              t("rules.survival"),
+              t("rules.ends"),
             ],
           },
           {
-            title: "Power",
+            title: t("rules.power"),
             items: [
-              `Gain ${rules.gainPowerAmount} power.`,
-              "Power does not target another player.",
-              "A player using Power is eliminated if attacked by Wave or Super Blast in the same round.",
+              t("rules.gainPower", { amount: rules.gainPowerAmount }),
+              t("rules.powerNoTarget"),
+              t("rules.powerEliminated"),
             ],
           },
           {
-            title: "Defense",
+            title: t("rules.defense"),
             items: [
-              "Defense does not target another player.",
-              "Defense survives an incoming Wave or one Super Blast.",
-              "Multiple Super Blasts break Defense.",
-              "A player cannot use Defense three rounds in a row.",
+              t("rules.defenseNoTarget"),
+              t("rules.defenseSurvives"),
+              t("rules.multipleBreak"),
+              t("rules.noThreeDefense"),
             ],
           },
           {
-            title: "Wave",
+            title: t("rules.wave"),
             items: [
-              `Costs ${rules.waveCost} power and targets one enemy.`,
-              "Mutual Waves offset only when both players target each other.",
-              "A Wave aimed somewhere else does not protect against an incoming Wave.",
-              "Wave loses to Super Blast.",
+              t("rules.waveCost", { cost: rules.waveCost }),
+              t("rules.mutualWave"),
+              t("rules.waveElsewhere"),
+              t("rules.waveLoses"),
             ],
           },
           {
-            title: "Super Blast",
+            title: t("rules.superBlast"),
             items: [
-              `Costs ${rules.superBlastCost} power.`,
-              "Targets every enemy player.",
-              "Super Blast users are not eliminated by other Super Blasts.",
-              "Air Cannon is the direct counter to Super Blast.",
+              t("rules.superBlastCost", { cost: rules.superBlastCost }),
+              t("rules.targetsEveryEnemy"),
+              t("rules.superBlastSafe"),
+              t("rules.airCounter"),
             ],
           },
           {
-            title: "Air Cannon",
+            title: t("rules.airCannon"),
             items: [
-              "Targets one enemy player.",
-              "If the target used Super Blast, Air Cannon eliminates that target.",
-              "Air Cannon survives the targeted Super Blast.",
-              "Air Cannon does not block unrelated incoming attacks from other players.",
+              t("rules.airTargets"),
+              t("rules.airEliminates"),
+              t("rules.airSurvives"),
+              t("rules.airDoesNotBlock"),
             ],
           },
         ];
@@ -281,12 +286,12 @@
         }
       } else {
         ruleFrame.append(
-          createRuleSection("Basic rules", [
-            "All alive players choose one move each round.",
-            "Attack costs power and targets one enemy.",
-            "Defend blocks incoming attacks for the round.",
-            "Gain power increases your available power for future attacks.",
-            "The game ends when only one player, or one team, remains alive.",
+          createRuleSection(t("rules.basic"), [
+            t("rules.allAliveChoose"),
+            t("rules.attackCost"),
+            t("rules.defendBlocks"),
+            t("rules.gainPowerBasic"),
+            t("rules.ends"),
           ])
         );
       }
@@ -323,10 +328,60 @@
       });
     }
 
+    function formatGameLogEntry(entry) {
+      if (entry.result) {
+        return formatResultLine(entry.result);
+      }
+
+      return t(entry.key, entry.values);
+    }
+
     function formatResultLine(result) {
+      const message = translateResultMessage(result.message);
       return result.targetId
-        ? `${result.playerId} ${result.message} to ${result.targetId}`
-        : `${result.playerId} ${result.message}`;
+        ? t("game.resultTo", { player: result.playerId, message, target: result.targetId })
+        : t("game.result", { player: result.playerId, message });
+    }
+
+    function translateResultMessage(message) {
+      const gainedPowerMatch = /^gained (\d+) power$/.exec(message);
+      if (gainedPowerMatch) {
+        return t("result.gainedPower", { amount: gainedPowerMatch[1] });
+      }
+
+      const eliminatedMatch = /^eliminated: (.+)$/.exec(message);
+      if (eliminatedMatch) {
+        return t("result.eliminated", { reason: translateEliminationReason(eliminatedMatch[1]) });
+      }
+
+      const messages = {
+        "aimed air cannon": "result.aimedAirCannon",
+        attacked: "result.attacked",
+        "attack blocked": "result.attackBlocked",
+        "attack eliminated target": "result.attackEliminatedTarget",
+        defended: "result.defended",
+        "sent a wave": "result.sentWave",
+        "used super blast": "result.usedSuperBlast",
+      };
+
+      return messages[message] ? t(messages[message]) : message;
+    }
+
+    function translateEliminationReason(reason) {
+      const airCannonMatch = /^hit by (.+)'s air cannon$/.exec(reason);
+      if (airCannonMatch) {
+        return t("reason.hitByAirCannon", { player: airCannonMatch[1] });
+      }
+
+      const reasons = {
+        "attacked while using air cannon": "reason.attackedWithAirCannon",
+        "defense was broken by multiple super blasts": "reason.defenseBroken",
+        "powered up while attacked": "reason.poweredUpWhileAttacked",
+        "wave did not offset incoming wave": "reason.waveDidNotOffset",
+        "wave was overpowered by super blast": "reason.waveOverpowered",
+      };
+
+      return reasons[reason] ? t(reasons[reason]) : reason;
     }
 
     function createActionPanel(gameState) {
@@ -334,7 +389,7 @@
       panel.className = "action-panel";
 
       const title = document.createElement("h3");
-      title.textContent = "Actions";
+      title.textContent = t("game.actions");
       panel.append(title);
 
       const helperText = document.createElement("p");
@@ -342,22 +397,22 @@
 
       if (!canSubmitMove(gameState)) {
         if (gameState.phase === "finished") {
-          helperText.textContent = "The game is over.";
+          helperText.textContent = t("game.over");
         } else if (getSubmittedRound() === gameState.round) {
           const submittedMove = getSubmittedMove();
           helperText.textContent = submittedMove
-            ? `You chose ${formatSubmittedMove(submittedMove)}. Waiting for other players.`
-            : "You already moved this round. Waiting for other players.";
+            ? t("game.choseMove", { move: formatSubmittedMove(submittedMove) })
+            : t("game.alreadyMoved");
         } else if (!currentPlayer(gameState)?.alive) {
-          helperText.textContent = "You are eliminated and cannot move.";
+          helperText.textContent = t("game.cannotMoveEliminated");
         } else {
-          helperText.textContent = "Waiting for the next available action.";
+          helperText.textContent = t("game.waitingAction");
         }
         panel.append(helperText);
         return panel;
       }
 
-      helperText.textContent = "Pick one move for this round.";
+      helperText.textContent = t("game.pickMove");
       panel.append(
         helperText,
         gameState.gameType === "power_defense_wave"
@@ -368,23 +423,14 @@
     }
 
     function formatSubmittedMove(move) {
-      const targetSuffix = move.targetId ? ` targeting ${move.targetId}` : "";
-      return `${formatMoveName(move.moveType)}${targetSuffix}`;
+      return move.targetId
+        ? t("game.targeting", { move: formatMoveName(move.moveType), target: move.targetId })
+        : formatMoveName(move.moveType);
     }
 
     function formatMoveName(moveType) {
-      const moveNames = {
-        air_cannon: "Air Cannon",
-        attack: "Attack",
-        defense: "Defense",
-        defend: "Defend",
-        gain_power: "Gain power",
-        power: "Power",
-        super_blast: "Super Blast",
-        wave: "Wave",
-      };
-
-      return moveNames[moveType] || moveType;
+      const translatedMove = t(`move.${moveType}`);
+      return translatedMove === `move.${moveType}` ? moveType : translatedMove;
     }
 
     function createPowerDefenseWaveControls(gameState) {
@@ -396,35 +442,41 @@
       const targetHint = document.createElement("p");
       targetHint.className = "action-helper";
       targetHint.textContent = pendingTargetMoveType
-        ? `Choose a target for ${formatMoveName(pendingTargetMoveType)}.`
-        : "Choose Wave or Air Cannon first, then click a target player.";
+        ? t("game.chooseTargetFor", { move: formatMoveName(pendingTargetMoveType) })
+        : t("game.chooseTargetHint");
 
       const powerButton = document.createElement("button");
       powerButton.type = "button";
-      powerButton.textContent = `Power (+${gameState.rules.gainPowerAmount})`;
+      powerButton.textContent = t("game.powerButton", { amount: gameState.rules.gainPowerAmount });
       powerButton.addEventListener("click", () => sendImmediateMove("power"));
 
       const defenseButton = document.createElement("button");
       defenseButton.type = "button";
-      defenseButton.textContent = "Defense";
+      defenseButton.textContent = formatMoveName("defense");
       defenseButton.disabled = (player?.defenseStreak || 0) >= 2;
       defenseButton.addEventListener("click", () => sendImmediateMove("defense"));
 
       const waveButton = document.createElement("button");
       waveButton.type = "button";
-      waveButton.textContent = `Wave (${gameState.rules.waveCost} power)`;
+      waveButton.textContent = t("game.costPowerButton", {
+        move: formatMoveName("wave"),
+        cost: gameState.rules.waveCost,
+      });
       waveButton.disabled = !hasTargets || player.power < gameState.rules.waveCost;
       waveButton.addEventListener("click", () => startTargetedMove("wave"));
 
       const superBlastButton = document.createElement("button");
       superBlastButton.type = "button";
-      superBlastButton.textContent = `Super Blast (${gameState.rules.superBlastCost} power)`;
+      superBlastButton.textContent = t("game.costPowerButton", {
+        move: formatMoveName("super_blast"),
+        cost: gameState.rules.superBlastCost,
+      });
       superBlastButton.disabled = player.power < gameState.rules.superBlastCost;
       superBlastButton.addEventListener("click", () => sendImmediateMove("super_blast"));
 
       const airCannonButton = document.createElement("button");
       airCannonButton.type = "button";
-      airCannonButton.textContent = "Air Cannon";
+      airCannonButton.textContent = formatMoveName("air_cannon");
       airCannonButton.disabled = !hasTargets;
       airCannonButton.addEventListener("click", () => startTargetedMove("air_cannon"));
 
@@ -460,7 +512,7 @@
       attackGroup.className = "action-group";
 
       const attackLabel = document.createElement("label");
-      attackLabel.textContent = "Attack target";
+      attackLabel.textContent = t("game.attackTarget");
 
       const targetSelect = document.createElement("select");
       const targets = attackTargets(gameState);
@@ -473,7 +525,10 @@
 
       const attackButton = document.createElement("button");
       attackButton.type = "button";
-      attackButton.textContent = `Attack (${gameState.rules.attackCost} power)`;
+      attackButton.textContent = t("game.costPowerButton", {
+        move: formatMoveName("attack"),
+        cost: gameState.rules.attackCost,
+      });
       attackButton.disabled = targets.length === 0 || currentPlayer(gameState).power < gameState.rules.attackCost;
       attackButton.addEventListener("click", () => {
         sendGameMove("attack", targetSelect.value);
@@ -485,14 +540,14 @@
 
       const defendButton = document.createElement("button");
       defendButton.type = "button";
-      defendButton.textContent = "Defend";
+      defendButton.textContent = formatMoveName("defend");
       defendButton.addEventListener("click", () => {
         sendGameMove("defend");
       });
 
       const gainPowerButton = document.createElement("button");
       gainPowerButton.type = "button";
-      gainPowerButton.textContent = `Gain power (+${gameState.rules.gainPowerAmount})`;
+      gainPowerButton.textContent = t("game.gainPowerButton", { amount: gameState.rules.gainPowerAmount });
       gainPowerButton.addEventListener("click", () => {
         sendGameMove("gain_power");
       });

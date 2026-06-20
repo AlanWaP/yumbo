@@ -11,6 +11,7 @@
       class="github-link"
       href="https://github.com/AlanWaP/yumbo"
       aria-label="Open GitHub repository"
+      data-i18n-aria-label="aria.github"
     >
       <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
         <path
@@ -22,20 +23,24 @@
     <main class="app">
       <section class="card">
         <h1>Yumbo</h1>
-        <p id="status" class="status">Enter your backend URL to begin.</p>
+        <button id="language-toggle-button" class="language-toggle" type="button">
+          中文
+        </button>
+        <p id="status" class="status" data-i18n="status.enterBackend">Enter your backend URL to begin.</p>
 
         <section id="connection-panel" class="panel">
-          <label for="server-url">Backend WebSocket URL</label>
+          <label for="server-url" data-i18n="connection.backendUrl">Backend WebSocket URL</label>
           <div class="input-row">
             <input
               id="server-url"
               type="url"
               placeholder="ws://localhost:3000 or wss://your-tunnel-url"
+              data-i18n-placeholder="connection.placeholder"
               autocomplete="off"
             />
-            <button id="connect-button" type="button">Connect</button>
+            <button id="connect-button" type="button" data-i18n="connection.connect">Connect</button>
           </div>
-          <p class="hint">
+          <p class="hint" data-i18n="connection.hint">
             Use <code>ws://localhost:3000</code> locally. Use a <code>wss://</code>
             tunnel URL when this page is hosted on GitHub Pages.
           </p>
@@ -49,26 +54,26 @@
         </section>
 
         <section id="lobby-panel" class="panel" hidden>
-          <h2>Waiting room</h2>
+          <h2 data-i18n="lobby.title">Waiting room</h2>
           <div class="input-row">
             <label class="field">
-              <span>Game type</span>
+              <span data-i18n="lobby.gameType">Game type</span>
               <select id="game-type">
-                <option value="power_defense_wave">Power, Defense and Wave</option>
-                <option value="rps">Rock Paper Scissors</option>
-                <option value="cards">Cards</option>
-                <option value="trivia">Trivia</option>
+                <option value="power_defense_wave" data-i18n="gameType.power_defense_wave">Power, Defense and Wave</option>
+                <option value="rps" data-i18n="gameType.rps">Rock Paper Scissors</option>
+                <option value="cards" data-i18n="gameType.cards">Cards</option>
+                <option value="trivia" data-i18n="gameType.trivia">Trivia</option>
               </select>
             </label>
             <label class="field game-mode-field">
-              <span>Mode</span>
+              <span data-i18n="lobby.mode">Mode</span>
               <select id="game-mode">
-                <option value="free_for_all">Free for all</option>
-                <option value="team">Team vs team</option>
+                <option value="free_for_all" data-i18n="gameMode.free_for_all">Free for all</option>
+                <option value="team" data-i18n="gameMode.team">Team vs team</option>
               </select>
             </label>
             <label class="field player-count-field">
-              <span>Players needed</span>
+              <span data-i18n="lobby.playersNeeded">Players needed</span>
               <select id="player-count" class="player-count-input">
                 <option value="2">2 players</option>
                 <option value="3">3 players</option>
@@ -87,40 +92,41 @@
                 <option value="16">16 players</option>
               </select>
             </label>
-            <button id="join-queue-button" type="button">Create game</button>
-            <button id="leave-queue-button" type="button" hidden>Leave queue</button>
+            <button id="join-queue-button" type="button" data-i18n="lobby.createGame">Create game</button>
+            <button id="leave-queue-button" type="button" data-i18n="lobby.leaveQueue" hidden>Leave queue</button>
           </div>
-          <p class="hint">
+          <p class="hint" data-i18n="lobby.hint">
             Create a waiting game or join an existing one. The game screen appears
             only after the match starts.
           </p>
           <section class="existing-games" aria-labelledby="existing-games-title">
             <div class="existing-games-header">
-              <h2 id="existing-games-title">Existing games</h2>
-              <button id="refresh-lobby-button" class="secondary-button" type="button">
+              <h2 id="existing-games-title" data-i18n="lobby.existingGames">Existing games</h2>
+              <button id="refresh-lobby-button" class="secondary-button" type="button" data-i18n="lobby.refresh">
                 Refresh
               </button>
             </div>
             <div id="existing-games-list" class="game-list">
-              <p class="empty-list">Connect to see waiting and started games.</p>
+              <p class="empty-list" data-i18n="lobby.emptyDisconnected">Connect to see waiting and started games.</p>
             </div>
           </section>
         </section>
 
         <section id="game-frame" class="game-frame" aria-live="polite" hidden>
-          <h2>Game Frame</h2>
-          <p>
+          <h2 data-i18n="game.placeholderTitle">Game Frame</h2>
+          <p data-i18n="game.placeholderDetail">
             Future game elements will be mounted here. This framework only shows
             connection, queue, and room state for now.
           </p>
         </section>
 
         <div class="actions">
-          <button id="leave-room-button" type="button" hidden>Leave room</button>
+          <button id="leave-room-button" type="button" data-i18n="lobby.leaveRoom" hidden>Leave room</button>
         </div>
       </section>
     </main>
 
+    <script src="i18n.js"></script>
     <script src="waiting-room.js"></script>
     <script src="game-screen.js"></script>
     <script src="script.js"></script>
