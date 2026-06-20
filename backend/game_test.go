@@ -24,7 +24,7 @@ func submitTestMove(t *testing.T, session *gameSession, playerID string, moveTyp
 }
 
 func TestGameSessionResolvesAttackDefendAndGainPower(t *testing.T) {
-	session := newGameSession("room_one", []string{"player_one", "player_two", "player_three"}, gameModeFreeForAll, 3)
+	session := newGameSession("room_one", "rps", []string{"player_one", "player_two", "player_three"}, gameModeFreeForAll, 3)
 
 	if shouldResolve := submitTestMove(t, session, "player_one", moveTypeAttack, "player_two"); shouldResolve {
 		t.Fatal("expected round to wait for remaining moves")
@@ -50,7 +50,7 @@ func TestGameSessionResolvesAttackDefendAndGainPower(t *testing.T) {
 }
 
 func TestGameSessionRejectsInvalidAttack(t *testing.T) {
-	session := newGameSession("room_one", []string{"player_one", "player_two"}, gameModeFreeForAll, 2)
+	session := newGameSession("room_one", "rps", []string{"player_one", "player_two"}, gameModeFreeForAll, 2)
 	session.Players["player_one"].Power = 0
 
 	payload, err := json.Marshal(gameMovePayload{
@@ -67,7 +67,7 @@ func TestGameSessionRejectsInvalidAttack(t *testing.T) {
 }
 
 func TestGameSessionFinishesWhenOneTeamRemains(t *testing.T) {
-	session := newGameSession("room_one", []string{"player_one", "player_two"}, gameModeFreeForAll, 2)
+	session := newGameSession("room_one", "rps", []string{"player_one", "player_two"}, gameModeFreeForAll, 2)
 	session.Rules.AttackDamage = 10
 
 	submitTestMove(t, session, "player_one", moveTypeAttack, "player_two")
@@ -83,7 +83,7 @@ func TestGameSessionFinishesWhenOneTeamRemains(t *testing.T) {
 }
 
 func TestGameSessionResolvesAttacksSimultaneously(t *testing.T) {
-	session := newGameSession("room_one", []string{"player_one", "player_two"}, gameModeFreeForAll, 2)
+	session := newGameSession("room_one", "rps", []string{"player_one", "player_two"}, gameModeFreeForAll, 2)
 	session.Rules.AttackDamage = 10
 
 	submitTestMove(t, session, "player_one", moveTypeAttack, "player_two")
@@ -102,7 +102,7 @@ func TestGameSessionResolvesAttacksSimultaneously(t *testing.T) {
 }
 
 func TestTeamModeAssignsTeamsAndRejectsTeamAttacks(t *testing.T) {
-	session := newGameSession("room_one", []string{"player_one", "player_two", "player_three", "player_four"}, gameModeTeam, 2)
+	session := newGameSession("room_one", "rps", []string{"player_one", "player_two", "player_three", "player_four"}, gameModeTeam, 2)
 
 	if session.Players["player_one"].TeamID != session.Players["player_three"].TeamID {
 		t.Fatal("expected alternating players to share team one")
@@ -121,5 +121,89 @@ func TestTeamModeAssignsTeamsAndRejectsTeamAttacks(t *testing.T) {
 
 	if _, _, err := session.submitMove("player_one", payload); err == nil {
 		t.Fatal("expected attacking a teammate to fail")
+	}
+}
+
+func TestPowerDefenseWavePowerLosesWhenAttacked(t *testing.T) {
+	session := newGameSession("room_one", gameTypePowerDefenseWave, []string{"player_one", "player_two"}, gameModeFreeForAll, 2)
+	session.Players["player_two"].Power = 1
+
+	submitTestMove(t, session, "player_one", moveTypePower, "")
+	submitTestMove(t, session, "player_two", moveTypeWave, "player_one")
+	session.resolveRound()
+
+	if session.Players["player_one"].Alive {
+		t.Fatal("expected player_one to be eliminated after powering up while attacked")
+	}
+	if !session.Players["player_two"].Alive {
+		t.Fatal("expected attacking player to remain alive")
+	}
+}
+
+func TestPowerDefenseWaveRejectsThirdConsecutiveDefense(t *testing.T) {
+	session := newGameSession("room_one", gameTypePowerDefenseWave, []string{"player_one", "player_two"}, gameModeFreeForAll, 2)
+
+	submitTestMove(t, session, "player_one", moveTypeDefense, "")
+	submitTestMove(t, session, "player_two", moveTypeDefense, "")
+	session.resolveRound()
+	submitTestMove(t, session, "player_one", moveTypeDefense, "")
+	submitTestMove(t, session, "player_two", moveTypeDefense, "")
+	session.resolveRound()
+
+	payload, err := json.Marshal(gameMovePayload{MoveType: moveTypeDefense})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := session.submitMove("player_one", payload); err == nil {
+		t.Fatal("expected third consecutive defense to be rejected")
+	}
+}
+
+func TestPowerDefenseWaveDefenseBlocksSingleSuperBlast(t *testing.T) {
+	session := newGameSession("room_one", gameTypePowerDefenseWave, []string{"player_one", "player_two", "player_three"}, gameModeFreeForAll, 3)
+	session.Players["player_two"].Power = 3
+
+	submitTestMove(t, session, "player_one", moveTypeDefense, "")
+	submitTestMove(t, session, "player_two", moveTypeSuperBlast, "")
+	submitTestMove(t, session, "player_three", moveTypePower, "")
+	session.resolveRound()
+
+	if !session.Players["player_one"].Alive {
+		t.Fatal("expected defense to block one super blast")
+	}
+	if session.Players["player_three"].Alive {
+		t.Fatal("expected non-defending player to lose to super blast")
+	}
+}
+
+func TestPowerDefenseWaveMultipleSuperBlastsBreakDefense(t *testing.T) {
+	session := newGameSession("room_one", gameTypePowerDefenseWave, []string{"player_one", "player_two", "player_three"}, gameModeFreeForAll, 3)
+	session.Players["player_two"].Power = 3
+	session.Players["player_three"].Power = 3
+
+	submitTestMove(t, session, "player_one", moveTypeDefense, "")
+	submitTestMove(t, session, "player_two", moveTypeSuperBlast, "")
+	submitTestMove(t, session, "player_three", moveTypeSuperBlast, "")
+	session.resolveRound()
+
+	if session.Players["player_one"].Alive {
+		t.Fatal("expected multiple super blasts to break defense")
+	}
+}
+
+func TestPowerDefenseWaveAirCannonEliminatesSuperBlastButDoesNotCancelIt(t *testing.T) {
+	session := newGameSession("room_one", gameTypePowerDefenseWave, []string{"player_one", "player_two", "player_three"}, gameModeFreeForAll, 3)
+	session.Players["player_two"].Power = 3
+
+	submitTestMove(t, session, "player_one", moveTypeAirCannon, "player_two")
+	submitTestMove(t, session, "player_two", moveTypeSuperBlast, "")
+	submitTestMove(t, session, "player_three", moveTypePower, "")
+	session.resolveRound()
+
+	if session.Players["player_two"].Alive {
+		t.Fatal("expected air cannon target using super blast to be eliminated")
+	}
+	if session.Players["player_three"].Alive {
+		t.Fatal("expected super blast to still attack other players")
 	}
 }

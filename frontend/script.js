@@ -18,6 +18,7 @@ const existingGamesList = document.querySelector("#existing-games-list");
 const gameFrame = document.querySelector("#game-frame");
 
 const gameTypeNames = {
+  power_defense_wave: "Power, Defense and Wave",
   rps: "Rock Paper Scissors",
   cards: "Cards",
   trivia: "Trivia",
@@ -46,9 +47,10 @@ let isQueued = false;
 let lobbyGames = [];
 let currentGameState;
 let submittedRound;
+let selectedTargetId;
 
 serverUrlInput.value = defaultServerUrl;
-gameTypeInput.value = urlParams.get("game") || savedGameType || "rps";
+gameTypeInput.value = urlParams.get("game") || savedGameType || "power_defense_wave";
 if (!gameTypeNames[gameTypeInput.value]) {
   gameTypeInput.value = "rps";
 }
@@ -149,6 +151,7 @@ function connect(rawUrl) {
     lobbyGames = [];
     currentGameState = undefined;
     submittedRound = undefined;
+    selectedTargetId = undefined;
     updateLabels();
     renderExistingGames();
     setStatus("Disconnected from multiplayer backend.");
@@ -191,6 +194,7 @@ function handleServerMessage(rawMessage) {
     isQueued = true;
     currentGameState = undefined;
     submittedRound = undefined;
+    selectedTargetId = undefined;
     updateLabels();
     setStatus("Waiting for players...");
     setGameFrame(
@@ -214,6 +218,7 @@ function handleServerMessage(rawMessage) {
     setStatus("Room created. Choose a move for round one.");
     currentGameState = message.payload;
     submittedRound = undefined;
+    selectedTargetId = undefined;
     renderGameState(currentGameState);
     joinQueueButton.hidden = false;
     leaveQueueButton.hidden = true;
@@ -227,6 +232,7 @@ function handleServerMessage(rawMessage) {
     isQueued = false;
     currentGameState = undefined;
     submittedRound = undefined;
+    selectedTargetId = undefined;
     updateLabels();
     setStatus("You are not in the queue.");
     setGameFrame("Game Frame", "Choose a game type and enter the queue when ready.");
@@ -244,6 +250,7 @@ function handleServerMessage(rawMessage) {
     isQueued = false;
     currentGameState = undefined;
     submittedRound = undefined;
+    selectedTargetId = undefined;
     updateLabels();
     setStatus(message.type === "peer_left" ? "The other player left." : "You left the room.");
     setGameFrame("Room Closed", "Return to the lobby to queue for another game.");
@@ -273,6 +280,7 @@ function handleServerMessage(rawMessage) {
     currentGameState = message.payload;
     if (currentGameState?.round !== submittedRound) {
       submittedRound = undefined;
+      selectedTargetId = undefined;
     }
     setStatus(formatGameStatus(message.type, currentGameState));
     renderGameState(currentGameState);
@@ -372,6 +380,9 @@ function renderGameState(gameState) {
     setGameFrame("Room Ready", "Waiting for the first game state from the backend.");
     return;
   }
+  if (selectedTargetId && !attackTargets(gameState).some((target) => target.id === selectedTargetId)) {
+    selectedTargetId = undefined;
+  }
 
   const board = document.createElement("section");
   board.className = "game-board";
@@ -419,12 +430,26 @@ function renderGameState(gameState) {
     const card = document.createElement("div");
     card.className = `game-player-card${player.id === playerId ? " current-player" : ""}${
       player.alive ? "" : " eliminated"
+    }${player.id === selectedTargetId ? " selected-target" : ""}${
+      isTargetablePlayer(gameState, player) ? " targetable-player" : ""
     }`;
+    if (isTargetablePlayer(gameState, player)) {
+      card.tabIndex = 0;
+      card.role = "button";
+      card.addEventListener("click", () => selectPlayerTarget(player.id));
+      card.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          selectPlayerTarget(player.id);
+        }
+      });
+    }
     card.innerHTML = `
       <strong>${player.id === playerId ? "You" : player.id}</strong>
       <span>Team: ${player.teamId}</span>
       <span>Health: ${player.health}</span>
       <span>Power: ${player.power}</span>
+      <span>Defense streak: ${player.defenseStreak || 0}</span>
       <span>${player.alive ? "Alive" : "Eliminated"}</span>
     `;
     playerGrid.append(card);
@@ -462,8 +487,66 @@ function createActionPanel(gameState) {
   }
 
   helperText.textContent = "Pick one move for this round.";
-  panel.append(helperText, createMoveControls(gameState));
+  panel.append(
+    helperText,
+    gameState.gameType === "power_defense_wave"
+      ? createPowerDefenseWaveControls(gameState)
+      : createMoveControls(gameState)
+  );
   return panel;
+}
+
+function createPowerDefenseWaveControls(gameState) {
+  const controls = document.createElement("div");
+  controls.className = "game-controls";
+  const player = currentPlayer(gameState);
+  const hasTarget = Boolean(selectedTargetId);
+
+  const targetHint = document.createElement("p");
+  targetHint.className = "action-helper";
+  targetHint.textContent = hasTarget
+    ? `Selected target: ${selectedTargetId}`
+    : "Click a player card on the left to choose a target for Wave or Air Cannon.";
+
+  const powerButton = document.createElement("button");
+  powerButton.type = "button";
+  powerButton.textContent = `Power (+${gameState.rules.gainPowerAmount})`;
+  powerButton.addEventListener("click", () => sendGameMove("power"));
+
+  const defenseButton = document.createElement("button");
+  defenseButton.type = "button";
+  defenseButton.textContent = "Defense";
+  defenseButton.disabled = (player?.defenseStreak || 0) >= 2;
+  defenseButton.addEventListener("click", () => sendGameMove("defense"));
+
+  const waveButton = document.createElement("button");
+  waveButton.type = "button";
+  waveButton.textContent = `Wave (${gameState.rules.waveCost} power)`;
+  waveButton.disabled = !hasTarget || player.power < gameState.rules.waveCost;
+  waveButton.addEventListener("click", () => sendGameMove("wave", selectedTargetId));
+
+  const superBlastButton = document.createElement("button");
+  superBlastButton.type = "button";
+  superBlastButton.textContent = `Super Blast (${gameState.rules.superBlastCost} power)`;
+  superBlastButton.disabled = player.power < gameState.rules.superBlastCost;
+  superBlastButton.addEventListener("click", () => sendGameMove("super_blast"));
+
+  const airCannonButton = document.createElement("button");
+  airCannonButton.type = "button";
+  airCannonButton.textContent = "Air Cannon";
+  airCannonButton.disabled = !hasTarget;
+  airCannonButton.addEventListener("click", () => sendGameMove("air_cannon", selectedTargetId));
+
+  const basicActions = document.createElement("div");
+  basicActions.className = "action-group";
+  basicActions.append(powerButton, defenseButton, superBlastButton);
+
+  const targetedActions = document.createElement("div");
+  targetedActions.className = "action-group";
+  targetedActions.append(targetHint, waveButton, airCannonButton);
+
+  controls.append(basicActions, targetedActions);
+  return controls;
 }
 
 function createMoveControls(gameState) {
@@ -548,6 +631,15 @@ function attackTargets(gameState) {
   return Object.values(gameState.players || {}).filter((target) => {
     return target.alive && target.id !== playerId && target.teamId !== player.teamId;
   });
+}
+
+function isTargetablePlayer(gameState, player) {
+  return attackTargets(gameState).some((target) => target.id === player.id);
+}
+
+function selectPlayerTarget(targetId) {
+  selectedTargetId = targetId;
+  renderGameState(currentGameState);
 }
 
 function formatGameStatus(messageType, gameState) {

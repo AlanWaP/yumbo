@@ -24,11 +24,14 @@ type gameRules struct {
 	AttackCost      int `json:"attackCost"`
 	AttackDamage    int `json:"attackDamage"`
 	GainPowerAmount int `json:"gainPowerAmount"`
+	WaveCost        int `json:"waveCost"`
+	SuperBlastCost  int `json:"superBlastCost"`
 	RoundSeconds    int `json:"roundSeconds"`
 }
 
 type gameSession struct {
 	ID           string                   `json:"id"`
+	GameType     string                   `json:"gameType"`
 	Mode         string                   `json:"mode"`
 	Round        int                      `json:"round"`
 	Phase        string                   `json:"phase"`
@@ -43,11 +46,12 @@ type gameSession struct {
 }
 
 type gamePlayer struct {
-	ID     string `json:"id"`
-	TeamID string `json:"teamId"`
-	Health int    `json:"health"`
-	Power  int    `json:"power"`
-	Alive  bool   `json:"alive"`
+	ID            string `json:"id"`
+	TeamID        string `json:"teamId"`
+	Health        int    `json:"health"`
+	Power         int    `json:"power"`
+	DefenseStreak int    `json:"defenseStreak"`
+	Alive         bool   `json:"alive"`
 }
 
 type submittedMove struct {
@@ -84,8 +88,18 @@ func defaultGameRules() gameRules {
 		AttackCost:      1,
 		AttackDamage:    2,
 		GainPowerAmount: 1,
+		WaveCost:        1,
+		SuperBlastCost:  3,
 		RoundSeconds:    0,
 	}
+}
+
+func gameRulesForType(gameType string) gameRules {
+	rules := defaultGameRules()
+	if gameType == gameTypePowerDefenseWave {
+		return applyPowerDefenseWaveRules(rules)
+	}
+	return rules
 }
 
 func normalizeGameMode(requestedMode string, playerCount int) (string, int, error) {
@@ -101,10 +115,11 @@ func normalizeGameMode(requestedMode string, playerCount int) (string, int, erro
 	return gameModeTeam, 2, nil
 }
 
-func newGameSession(roomID string, playerIDs []string, mode string, teamCount int) *gameSession {
-	rules := defaultGameRules()
+func newGameSession(roomID string, gameType string, playerIDs []string, mode string, teamCount int) *gameSession {
+	rules := gameRulesForType(gameType)
 	session := &gameSession{
 		ID:           roomID,
+		GameType:     gameType,
 		Mode:         mode,
 		Round:        1,
 		Phase:        gamePhaseWaitingForMoves,
@@ -183,6 +198,10 @@ func (g *gameSession) submitMove(playerID string, payload json.RawMessage) (*gam
 }
 
 func (g *gameSession) validateMove(currentPlayer *gamePlayer, move submittedMove) error {
+	if g.GameType == gameTypePowerDefenseWave {
+		return g.validatePowerDefenseWaveMove(currentPlayer, move)
+	}
+
 	switch move.Type {
 	case moveTypeAttack:
 		if currentPlayer.Power < g.Rules.AttackCost {
@@ -210,6 +229,11 @@ func (g *gameSession) validateMove(currentPlayer *gamePlayer, move submittedMove
 }
 
 func (g *gameSession) resolveRound() {
+	if g.GameType == gameTypePowerDefenseWave {
+		g.resolvePowerDefenseWaveRound()
+		return
+	}
+
 	aliveAtRoundStart := map[string]bool{}
 	defendingPlayers := map[string]bool{}
 	pendingDamage := map[string]int{}
@@ -302,6 +326,10 @@ func (g *gameSession) resolveRound() {
 		return
 	}
 
+	g.startNextRound()
+}
+
+func (g *gameSession) startNextRound() {
 	g.Round++
 	if g.Rules.RoundSeconds > 0 {
 		deadline := time.Now().Add(time.Duration(g.Rules.RoundSeconds) * time.Second)

@@ -102,7 +102,8 @@ Client messages:
 - `leave_queue`
 - `leave_room`
 - `request_lobby`
-- `game_move` with `payload.moveType` as `attack`, `defend`, or `gain_power`
+- `game_move` with `payload.moveType`; generic games use `attack`, `defend`,
+  or `gain_power`, while game-specific modules can define their own moves
 - `room_message` with arbitrary `payload`
 
 Server messages:
@@ -149,6 +150,17 @@ extend. Each alive player submits one move per round:
 The backend resolves a round after every alive player moves, then broadcasts the
 new game state. `room_message.payload` remains available as an opaque extension
 channel for game-specific UI messages.
+
+The first game-specific module is `power_defense_wave`, shown as "Power,
+Defense and Wave" in the frontend. Players start at 0 power and can choose:
+
+- `power`: gain 1 power, but lose if attacked that round.
+- `defense`: block attacks unless multiple players use `super_blast`; cannot
+  be used three rounds in a row.
+- `wave`: spend 1 power to attack one target.
+- `super_blast`: spend 3 power to attack all enemy players.
+- `air_cannon`: target one player; if that player uses `super_blast`, they lose,
+  but their blast still resolves.
 
 ## Tests
 

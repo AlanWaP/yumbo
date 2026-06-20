@@ -346,6 +346,20 @@ button.game-card:hover:not(:disabled) {
   box-shadow: 0 0 0 2px rgba(58, 99, 243, 0.1);
 }
 
+.game-player-card.targetable-player {
+  cursor: pointer;
+}
+
+.game-player-card.targetable-player:hover {
+  border-color: #9cadff;
+  background: #f8faff;
+}
+
+.game-player-card.selected-target {
+  border-color: #ff9f1c;
+  box-shadow: 0 0 0 2px rgba(255, 159, 28, 0.18);
+}
+
 .game-player-card.eliminated {
   opacity: 0.55;
 }

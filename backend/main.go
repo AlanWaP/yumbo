@@ -316,7 +316,7 @@ func (h *hub) createRoomLocked(gameType string, gameMode string, teamCount int, 
 		teamCount:   teamCount,
 		playerCount: playerCount,
 		playerIDs:   playerIDs,
-		game:        newGameSession(roomID, playerIDs, gameMode, teamCount),
+		game:        newGameSession(roomID, gameType, playerIDs, gameMode, teamCount),
 	}
 
 	h.rooms[roomID] = currentRoom
