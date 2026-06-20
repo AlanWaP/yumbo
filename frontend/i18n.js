@@ -32,7 +32,7 @@
       "status.roundResolvedNextMove": "Round resolved. Choose your next move.",
       "status.gameUpdated": "Game state updated.",
 
-      "language.toggle": "中文",
+      "language.toggle": "English",
       "language.current": "Language: English",
       "language.switch": "Switch language",
 
@@ -201,7 +201,7 @@
       "status.roundResolvedNextMove": "回合已结算。请选择下一步行动。",
       "status.gameUpdated": "游戏状态已更新。",
 
-      "language.toggle": "English",
+      "language.toggle": "中文",
       "language.current": "语言：中文",
       "language.switch": "切换语言",
 
