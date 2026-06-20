@@ -43,6 +43,7 @@
 
       "labels.player": "Player: {player}",
       "labels.playerUnassigned": "not assigned",
+      "labels.connectionDetails": "Connection details",
       "labels.game": "Game: {game}{mode}",
       "labels.gameNone": "none",
       "labels.gameModeSuffix": ", {mode}",
@@ -212,6 +213,7 @@
 
       "labels.player": "玩家：{player}",
       "labels.playerUnassigned": "未分配",
+      "labels.connectionDetails": "连接详情",
       "labels.game": "游戏：{game}{mode}",
       "labels.gameNone": "无",
       "labels.gameModeSuffix": "，{mode}",
