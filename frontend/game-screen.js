@@ -194,7 +194,7 @@
 
     function formatResultLine(result) {
       return result.targetId
-        ? `${result.playerId} ${result.message} ${result.targetId}`
+        ? `${result.playerId} ${result.message} to ${result.targetId}`
         : `${result.playerId} ${result.message}`;
     }
 

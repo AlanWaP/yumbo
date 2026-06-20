@@ -5,6 +5,154 @@ import (
 	"testing"
 )
 
+func TestPowerDefenseWaveSimultaneousMoveRules(t *testing.T) {
+	tests := []struct {
+		name        string
+		playerIDs   []string
+		power       map[string]int
+		moves       []submittedMove
+		wantAlive   map[string]bool
+		description string
+	}{
+		{
+			name:      "power loses to any incoming attack",
+			playerIDs: []string{"player_one", "player_two"},
+			power:     map[string]int{"player_two": 1},
+			moves: []submittedMove{
+				{PlayerID: "player_one", Type: moveTypePower},
+				{PlayerID: "player_two", Type: moveTypeWave, TargetID: "player_one"},
+			},
+			wantAlive: map[string]bool{
+				"player_one": false,
+				"player_two": true,
+			},
+			description: "choosing Power is unsafe when another move attacks you in the same round",
+		},
+		{
+			name:      "mutual waves offset each other",
+			playerIDs: []string{"player_one", "player_two"},
+			power: map[string]int{
+				"player_one": 1,
+				"player_two": 1,
+			},
+			moves: []submittedMove{
+				{PlayerID: "player_one", Type: moveTypeWave, TargetID: "player_two"},
+				{PlayerID: "player_two", Type: moveTypeWave, TargetID: "player_one"},
+			},
+			wantAlive: map[string]bool{
+				"player_one": true,
+				"player_two": true,
+			},
+			description: "Wave only offsets an incoming Wave when both players target each other",
+		},
+		{
+			name:      "wave aimed elsewhere does not offset incoming wave",
+			playerIDs: []string{"player_one", "player_two", "player_three"},
+			power: map[string]int{
+				"player_one":   1,
+				"player_two":   1,
+				"player_three": 1,
+			},
+			moves: []submittedMove{
+				{PlayerID: "player_one", Type: moveTypeWave, TargetID: "player_two"},
+				{PlayerID: "player_two", Type: moveTypeWave, TargetID: "player_three"},
+				{PlayerID: "player_three", Type: moveTypeWave, TargetID: "player_one"},
+			},
+			wantAlive: map[string]bool{
+				"player_one":   false,
+				"player_two":   false,
+				"player_three": false,
+			},
+			description: "simultaneous Waves do not form a generic shield; target choice matters",
+		},
+		{
+			name:      "defense blocks one super blast",
+			playerIDs: []string{"player_one", "player_two"},
+			power:     map[string]int{"player_two": 3},
+			moves: []submittedMove{
+				{PlayerID: "player_one", Type: moveTypeDefense},
+				{PlayerID: "player_two", Type: moveTypeSuperBlast},
+			},
+			wantAlive: map[string]bool{
+				"player_one": true,
+				"player_two": true,
+			},
+			description: "Defense survives a single Super Blast in the same round",
+		},
+		{
+			name:      "multiple super blasts break defense but do not eliminate each other",
+			playerIDs: []string{"player_one", "player_two", "player_three"},
+			power: map[string]int{
+				"player_two":   3,
+				"player_three": 3,
+			},
+			moves: []submittedMove{
+				{PlayerID: "player_one", Type: moveTypeDefense},
+				{PlayerID: "player_two", Type: moveTypeSuperBlast},
+				{PlayerID: "player_three", Type: moveTypeSuperBlast},
+			},
+			wantAlive: map[string]bool{
+				"player_one":   false,
+				"player_two":   true,
+				"player_three": true,
+			},
+			description: "Super Blast users are not killed by other Super Blasts",
+		},
+		{
+			name:      "air cannon counters targeted super blast",
+			playerIDs: []string{"player_one", "player_two", "player_three"},
+			power:     map[string]int{"player_two": 3},
+			moves: []submittedMove{
+				{PlayerID: "player_one", Type: moveTypeAirCannon, TargetID: "player_two"},
+				{PlayerID: "player_two", Type: moveTypeSuperBlast},
+				{PlayerID: "player_three", Type: moveTypePower},
+			},
+			wantAlive: map[string]bool{
+				"player_one":   true,
+				"player_two":   false,
+				"player_three": false,
+			},
+			description: "Air Cannon eliminates its Super Blast target and survives that target's blast",
+		},
+		{
+			name:      "air cannon does not block unrelated incoming attacks",
+			playerIDs: []string{"player_one", "player_two", "player_three"},
+			power:     map[string]int{"player_three": 1},
+			moves: []submittedMove{
+				{PlayerID: "player_one", Type: moveTypeAirCannon, TargetID: "player_two"},
+				{PlayerID: "player_two", Type: moveTypePower},
+				{PlayerID: "player_three", Type: moveTypeWave, TargetID: "player_one"},
+			},
+			wantAlive: map[string]bool{
+				"player_one":   false,
+				"player_two":   true,
+				"player_three": true,
+			},
+			description: "Air Cannon only protects against the targeted Super Blast, not other attacks",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			session := newGameSession("room_one", gameTypePowerDefenseWave, tt.playerIDs, gameModeFreeForAll, len(tt.playerIDs))
+			for playerID, power := range tt.power {
+				session.Players[playerID].Power = power
+			}
+
+			for _, move := range tt.moves {
+				submitTestMove(t, session, move.PlayerID, move.Type, move.TargetID)
+			}
+			session.resolveRound()
+
+			for playerID, wantAlive := range tt.wantAlive {
+				if gotAlive := session.Players[playerID].Alive; gotAlive != wantAlive {
+					t.Fatalf("%s: %s alive=%v, want %v", tt.description, playerID, gotAlive, wantAlive)
+				}
+			}
+		})
+	}
+}
+
 func TestPowerDefenseWavePowerLosesWhenAttacked(t *testing.T) {
 	session := newGameSession("room_one", gameTypePowerDefenseWave, []string{"player_one", "player_two"}, gameModeFreeForAll, 2)
 	session.Players["player_two"].Power = 1
@@ -125,6 +273,24 @@ func TestPowerDefenseWaveMultipleSuperBlastsBreakDefense(t *testing.T) {
 
 	if session.Players["player_one"].Alive {
 		t.Fatal("expected multiple super blasts to break defense")
+	}
+}
+
+func TestPowerDefenseWaveSuperBlastsDoNotEliminateEachOther(t *testing.T) {
+	session := newGameSession("room_one", gameTypePowerDefenseWave, []string{"player_one", "player_two"}, gameModeFreeForAll, 2)
+	session.Players["player_one"].Power = 3
+	session.Players["player_two"].Power = 3
+
+	submitTestMove(t, session, "player_one", moveTypeSuperBlast, "")
+	submitTestMove(t, session, "player_two", moveTypeSuperBlast, "")
+	session.resolveRound()
+
+	if !session.Players["player_one"].Alive || !session.Players["player_two"].Alive {
+		t.Fatalf(
+			"expected super blasts not to eliminate each other, got player_one=%v player_two=%v",
+			session.Players["player_one"].Alive,
+			session.Players["player_two"].Alive,
+		)
 	}
 }
 

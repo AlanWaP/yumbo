@@ -241,9 +241,7 @@ func (g *gameSession) powerDefenseWaveEliminationReason(move submittedMove, atta
 			}
 		}
 	case moveTypeSuperBlast:
-		if hasSuperBlastAttack {
-			return "hit by super blast"
-		}
+		// Air Cannon is the counter to Super Blast; other super blasts do not eliminate it.
 	case moveTypeAirCannon:
 		if g.hasUnblockedAirCannonAttack(move, attacks) {
 			return "attacked while using air cannon"
