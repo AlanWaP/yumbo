@@ -278,7 +278,7 @@
       "game.costPowerButton": "{move}（消耗 {cost} 能量）",
       "game.gainPowerButton": "获得能量（+{amount}）",
 
-      "gameType.power_defense_wave": "能量、防御与冲击波",
+      "gameType.power_defense_wave": "运，挡，和波",
       "gameType.rps": "石头剪刀布",
       "gameType.cards": "卡牌",
       "gameType.trivia": "问答",
