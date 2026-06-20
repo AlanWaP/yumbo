@@ -49,7 +49,7 @@
         </section>
 
         <section id="lobby-panel" class="panel" hidden>
-          <h2>Create a game</h2>
+          <h2>Waiting room</h2>
           <div class="input-row">
             <label class="field">
               <span>Game type</span>
@@ -91,7 +91,8 @@
             <button id="leave-queue-button" type="button" hidden>Leave queue</button>
           </div>
           <p class="hint">
-            Pick from the dropdowns, then create a waiting game for others to join.
+            Create a waiting game or join an existing one. The game screen appears
+            only after the match starts.
           </p>
           <section class="existing-games" aria-labelledby="existing-games-title">
             <div class="existing-games-header">
@@ -106,7 +107,7 @@
           </section>
         </section>
 
-        <section id="game-frame" class="game-frame" aria-live="polite">
+        <section id="game-frame" class="game-frame" aria-live="polite" hidden>
           <h2>Game Frame</h2>
           <p>
             Future game elements will be mounted here. This framework only shows
@@ -120,6 +121,8 @@
       </section>
     </main>
 
+    <script src="waiting-room.js"></script>
+    <script src="game-screen.js"></script>
     <script src="script.js"></script>
   </body>
 </html>

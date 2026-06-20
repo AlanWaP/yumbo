@@ -49,6 +49,30 @@ let currentGameState;
 let submittedRound;
 let selectedTargetId;
 
+const waitingRoom = window.createWaitingRoom({
+  panel: lobbyPanel,
+  existingGamesList,
+  getLobbyGames: () => lobbyGames,
+  isConnected: () => socket && socket.readyState === WebSocket.OPEN,
+  joinGame: joinQueue,
+  formatGameType,
+  formatGameMode,
+  formatPlayerIds,
+});
+
+const gameScreen = window.createGameScreen({
+  frame: gameFrame,
+  getPlayerId: () => playerId,
+  getSubmittedRound: () => submittedRound,
+  getSelectedTargetId: () => selectedTargetId,
+  setSelectedTargetId: (targetId) => {
+    selectedTargetId = targetId;
+  },
+  getCurrentGameState: () => currentGameState,
+  sendGameMove,
+  formatPlayerIds,
+});
+
 serverUrlInput.value = defaultServerUrl;
 gameTypeInput.value = urlParams.get("game") || savedGameType || "power_defense_wave";
 if (!gameTypeNames[gameTypeInput.value]) {
@@ -125,10 +149,9 @@ function connect(rawUrl) {
 
   socket.addEventListener("open", () => {
     connectionPanel.hidden = true;
-    lobbyPanel.hidden = false;
+    showWaitingRoom();
     connectButton.disabled = false;
     setStatus("Connected. Choose a game type and enter the queue.");
-    setGameFrame("Game Frame", "Waiting for a room. Future game UI will appear here.");
   });
 
   socket.addEventListener("message", (event) => {
@@ -155,7 +178,7 @@ function connect(rawUrl) {
     updateLabels();
     renderExistingGames();
     setStatus("Disconnected from multiplayer backend.");
-    setGameFrame("Connection closed", "Reconnect when your backend server is available.");
+    hideGameSurfaces();
   });
 
   socket.addEventListener("error", () => {
@@ -197,10 +220,7 @@ function handleServerMessage(rawMessage) {
     selectedTargetId = undefined;
     updateLabels();
     setStatus("Waiting for players...");
-    setGameFrame(
-      "Waiting Room",
-      `Keep this page open while the backend finds ${message.playerCount || "enough"} players.`
-    );
+    showWaitingRoom();
     joinQueueButton.hidden = true;
     leaveQueueButton.hidden = false;
     leaveRoomButton.hidden = true;
@@ -219,6 +239,7 @@ function handleServerMessage(rawMessage) {
     currentGameState = message.payload;
     submittedRound = undefined;
     selectedTargetId = undefined;
+    showGameFrame();
     renderGameState(currentGameState);
     joinQueueButton.hidden = false;
     leaveQueueButton.hidden = true;
@@ -235,7 +256,7 @@ function handleServerMessage(rawMessage) {
     selectedTargetId = undefined;
     updateLabels();
     setStatus("You are not in the queue.");
-    setGameFrame("Game Frame", "Choose a game type and enter the queue when ready.");
+    showWaitingRoom();
     joinQueueButton.hidden = false;
     leaveQueueButton.hidden = true;
     leaveRoomButton.hidden = true;
@@ -253,7 +274,7 @@ function handleServerMessage(rawMessage) {
     selectedTargetId = undefined;
     updateLabels();
     setStatus(message.type === "peer_left" ? "The other player left." : "You left the room.");
-    setGameFrame("Room Closed", "Return to the lobby to queue for another game.");
+    showWaitingRoom();
     joinQueueButton.hidden = false;
     leaveQueueButton.hidden = true;
     leaveRoomButton.hidden = true;
@@ -338,10 +359,7 @@ function joinQueue(gameToJoin) {
     playerCount: requestedPlayerCount,
   });
   setStatus(gameToJoin ? "Joining the selected game..." : "Creating a waiting game...");
-  setGameFrame(
-    gameToJoin ? "Joining Game" : "Creating Game",
-    "Waiting for the backend to confirm your place."
-  );
+  showWaitingRoom();
   joinQueueButton.hidden = true;
   leaveQueueButton.hidden = false;
   leaveRoomButton.hidden = true;
@@ -361,242 +379,23 @@ function setStatus(text) {
   statusEl.textContent = text;
 }
 
-function setGameFrame(title, detail) {
-  gameFrame.innerHTML = "";
+function showWaitingRoom() {
+  waitingRoom.show();
+  gameScreen.hide();
+}
 
-  const heading = document.createElement("h2");
-  heading.textContent = title;
+function showGameFrame() {
+  waitingRoom.hide();
+  gameScreen.show();
+}
 
-  const paragraph = document.createElement("p");
-  paragraph.textContent = detail;
-
-  gameFrame.append(heading, paragraph);
+function hideGameSurfaces() {
+  waitingRoom.hide();
+  gameScreen.hide();
 }
 
 function renderGameState(gameState) {
-  gameFrame.innerHTML = "";
-
-  if (!gameState) {
-    setGameFrame("Room Ready", "Waiting for the first game state from the backend.");
-    return;
-  }
-  if (selectedTargetId && !attackTargets(gameState).some((target) => target.id === selectedTargetId)) {
-    selectedTargetId = undefined;
-  }
-
-  const board = document.createElement("section");
-  board.className = "game-board";
-
-  const header = document.createElement("header");
-  header.className = "game-board-header";
-
-  const heading = document.createElement("h2");
-  heading.textContent = gameState.phase === "finished"
-    ? "Game finished"
-    : `Round ${gameState.round}`;
-
-  const summary = document.createElement("p");
-  summary.textContent = gameState.phase === "finished"
-    ? `Winner: ${formatPlayerIds(gameState.winners)}`
-    : "Choose one move. The round resolves after every alive player has moved.";
-
-  header.append(heading, summary);
-
-  if (Array.isArray(gameState.lastResults) && gameState.lastResults.length > 0) {
-    const results = document.createElement("ul");
-    results.className = "round-results";
-    for (const result of gameState.lastResults) {
-      const item = document.createElement("li");
-      item.textContent = result.targetId
-        ? `${result.playerId} ${result.message} ${result.targetId}`
-        : `${result.playerId} ${result.message}`;
-      results.append(item);
-    }
-    header.append(results);
-  }
-
-  const content = document.createElement("div");
-  content.className = "game-board-content";
-
-  const playerPanel = document.createElement("section");
-  playerPanel.className = "player-status-panel";
-  const playerPanelTitle = document.createElement("h3");
-  playerPanelTitle.textContent = "Players";
-
-  const playerGrid = document.createElement("div");
-  playerGrid.className = "game-player-grid";
-
-  for (const player of Object.values(gameState.players || {})) {
-    const card = document.createElement("div");
-    card.className = `game-player-card${player.id === playerId ? " current-player" : ""}${
-      player.alive ? "" : " eliminated"
-    }${player.id === selectedTargetId ? " selected-target" : ""}${
-      isTargetablePlayer(gameState, player) ? " targetable-player" : ""
-    }`;
-    if (isTargetablePlayer(gameState, player)) {
-      card.tabIndex = 0;
-      card.role = "button";
-      card.addEventListener("click", () => selectPlayerTarget(player.id));
-      card.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          selectPlayerTarget(player.id);
-        }
-      });
-    }
-    card.innerHTML = `
-      <strong>${player.id === playerId ? "You" : player.id}</strong>
-      <span>Team: ${player.teamId}</span>
-      <span>Health: ${player.health}</span>
-      <span>Power: ${player.power}</span>
-      <span>Defense streak: ${player.defenseStreak || 0}</span>
-      <span>${player.alive ? "Alive" : "Eliminated"}</span>
-    `;
-    playerGrid.append(card);
-  }
-
-  playerPanel.append(playerPanelTitle, playerGrid);
-  content.append(playerPanel, createActionPanel(gameState));
-  board.append(header, content);
-  gameFrame.append(board);
-}
-
-function createActionPanel(gameState) {
-  const panel = document.createElement("aside");
-  panel.className = "action-panel";
-
-  const title = document.createElement("h3");
-  title.textContent = "Actions";
-  panel.append(title);
-
-  const helperText = document.createElement("p");
-  helperText.className = "action-helper";
-
-  if (!canSubmitMove(gameState)) {
-    if (gameState.phase === "finished") {
-      helperText.textContent = "The game is over.";
-    } else if (submittedRound === gameState.round) {
-      helperText.textContent = "You already moved this round. Waiting for other players.";
-    } else if (!currentPlayer(gameState)?.alive) {
-      helperText.textContent = "You are eliminated and cannot move.";
-    } else {
-      helperText.textContent = "Waiting for the next available action.";
-    }
-    panel.append(helperText);
-    return panel;
-  }
-
-  helperText.textContent = "Pick one move for this round.";
-  panel.append(
-    helperText,
-    gameState.gameType === "power_defense_wave"
-      ? createPowerDefenseWaveControls(gameState)
-      : createMoveControls(gameState)
-  );
-  return panel;
-}
-
-function createPowerDefenseWaveControls(gameState) {
-  const controls = document.createElement("div");
-  controls.className = "game-controls";
-  const player = currentPlayer(gameState);
-  const hasTarget = Boolean(selectedTargetId);
-
-  const targetHint = document.createElement("p");
-  targetHint.className = "action-helper";
-  targetHint.textContent = hasTarget
-    ? `Selected target: ${selectedTargetId}`
-    : "Click a player card on the left to choose a target for Wave or Air Cannon.";
-
-  const powerButton = document.createElement("button");
-  powerButton.type = "button";
-  powerButton.textContent = `Power (+${gameState.rules.gainPowerAmount})`;
-  powerButton.addEventListener("click", () => sendGameMove("power"));
-
-  const defenseButton = document.createElement("button");
-  defenseButton.type = "button";
-  defenseButton.textContent = "Defense";
-  defenseButton.disabled = (player?.defenseStreak || 0) >= 2;
-  defenseButton.addEventListener("click", () => sendGameMove("defense"));
-
-  const waveButton = document.createElement("button");
-  waveButton.type = "button";
-  waveButton.textContent = `Wave (${gameState.rules.waveCost} power)`;
-  waveButton.disabled = !hasTarget || player.power < gameState.rules.waveCost;
-  waveButton.addEventListener("click", () => sendGameMove("wave", selectedTargetId));
-
-  const superBlastButton = document.createElement("button");
-  superBlastButton.type = "button";
-  superBlastButton.textContent = `Super Blast (${gameState.rules.superBlastCost} power)`;
-  superBlastButton.disabled = player.power < gameState.rules.superBlastCost;
-  superBlastButton.addEventListener("click", () => sendGameMove("super_blast"));
-
-  const airCannonButton = document.createElement("button");
-  airCannonButton.type = "button";
-  airCannonButton.textContent = "Air Cannon";
-  airCannonButton.disabled = !hasTarget;
-  airCannonButton.addEventListener("click", () => sendGameMove("air_cannon", selectedTargetId));
-
-  const basicActions = document.createElement("div");
-  basicActions.className = "action-group";
-  basicActions.append(powerButton, defenseButton, superBlastButton);
-
-  const targetedActions = document.createElement("div");
-  targetedActions.className = "action-group";
-  targetedActions.append(targetHint, waveButton, airCannonButton);
-
-  controls.append(basicActions, targetedActions);
-  return controls;
-}
-
-function createMoveControls(gameState) {
-  const controls = document.createElement("div");
-  controls.className = "game-controls";
-
-  const attackGroup = document.createElement("div");
-  attackGroup.className = "action-group";
-
-  const attackLabel = document.createElement("label");
-  attackLabel.textContent = "Attack target";
-
-  const targetSelect = document.createElement("select");
-  const targets = attackTargets(gameState);
-  for (const target of targets) {
-    const option = document.createElement("option");
-    option.value = target.id;
-    option.textContent = target.id;
-    targetSelect.append(option);
-  }
-
-  const attackButton = document.createElement("button");
-  attackButton.type = "button";
-  attackButton.textContent = `Attack (${gameState.rules.attackCost} power)`;
-  attackButton.disabled = targets.length === 0 || currentPlayer(gameState).power < gameState.rules.attackCost;
-  attackButton.addEventListener("click", () => {
-    sendGameMove("attack", targetSelect.value);
-  });
-  attackGroup.append(attackLabel, targetSelect, attackButton);
-
-  const basicActions = document.createElement("div");
-  basicActions.className = "action-group";
-
-  const defendButton = document.createElement("button");
-  defendButton.type = "button";
-  defendButton.textContent = "Defend";
-  defendButton.addEventListener("click", () => {
-    sendGameMove("defend");
-  });
-
-  const gainPowerButton = document.createElement("button");
-  gainPowerButton.type = "button";
-  gainPowerButton.textContent = `Gain power (+${gameState.rules.gainPowerAmount})`;
-  gainPowerButton.addEventListener("click", () => {
-    sendGameMove("gain_power");
-  });
-  basicActions.append(defendButton, gainPowerButton);
-
-  controls.append(attackGroup, basicActions);
-  return controls;
+  gameScreen.renderGameState(gameState);
 }
 
 function sendGameMove(moveType, targetId) {
@@ -607,39 +406,6 @@ function sendGameMove(moveType, targetId) {
       targetId,
     },
   });
-}
-
-function canSubmitMove(gameState) {
-  const player = currentPlayer(gameState);
-  return Boolean(
-    player &&
-      player.alive &&
-      gameState.phase === "waiting_for_moves" &&
-      submittedRound !== gameState.round
-  );
-}
-
-function currentPlayer(gameState) {
-  return gameState.players?.[playerId];
-}
-
-function attackTargets(gameState) {
-  const player = currentPlayer(gameState);
-  if (!player) {
-    return [];
-  }
-  return Object.values(gameState.players || {}).filter((target) => {
-    return target.alive && target.id !== playerId && target.teamId !== player.teamId;
-  });
-}
-
-function isTargetablePlayer(gameState, player) {
-  return attackTargets(gameState).some((target) => target.id === player.id);
-}
-
-function selectPlayerTarget(targetId) {
-  selectedTargetId = targetId;
-  renderGameState(currentGameState);
 }
 
 function formatGameStatus(messageType, gameState) {
@@ -653,51 +419,7 @@ function formatGameStatus(messageType, gameState) {
 }
 
 function renderExistingGames() {
-  existingGamesList.innerHTML = "";
-
-  if (lobbyGames.length === 0) {
-    const emptyMessage = document.createElement("p");
-    emptyMessage.className = "empty-list";
-    emptyMessage.textContent = socket && socket.readyState === WebSocket.OPEN
-      ? "No games yet. Create one to open the lobby."
-      : "Connect to see waiting and started games.";
-    existingGamesList.append(emptyMessage);
-    return;
-  }
-
-  for (const game of lobbyGames) {
-    const isWaiting = game.status === "waiting";
-    const card = document.createElement(isWaiting ? "button" : "div");
-    card.className = "game-card";
-
-    if (isWaiting) {
-      card.type = "button";
-      card.addEventListener("click", () => joinQueue(game));
-    }
-
-    const content = document.createElement("div");
-    const title = document.createElement("p");
-    title.className = "game-card-title";
-    title.textContent = `${formatGameType(game.gameType)} (${game.playerCount} players, ${formatGameMode(game.gameMode)})`;
-
-    const detail = document.createElement("p");
-    detail.className = "game-card-detail";
-    detail.textContent = `${game.joinedPlayerCount}/${game.playerCount} players ${
-      isWaiting ? "waiting" : "in room"
-    }. ${isWaiting ? "Click to join." : "Already started."}`;
-
-    const players = document.createElement("p");
-    players.className = "game-card-players";
-    players.textContent = `Players: ${formatPlayerIds(game.players)}`;
-
-    const status = document.createElement("span");
-    status.className = `game-status ${game.status}`;
-    status.textContent = isWaiting ? "Waiting" : "Started";
-
-    content.append(title, detail, players);
-    card.append(content, status);
-    existingGamesList.append(card);
-  }
+  waitingRoom.renderExistingGames();
 }
 
 function updateLabels() {
