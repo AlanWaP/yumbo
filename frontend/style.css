@@ -73,7 +73,8 @@ button:disabled {
   display: grid;
   min-height: 100vh;
   padding: 24px;
-  place-items: center;
+  justify-items: center;
+  align-items: start;
 }
 
 .card {
@@ -90,10 +91,23 @@ button:disabled {
   position: absolute;
   top: 24px;
   right: 24px;
+  display: grid;
+  width: 74px;
+  height: 34px;
   padding: 8px 14px;
   background: #e8edff;
   color: #33406a;
+  font-family: "PingFang SC", "Helvetica Neue", Arial, sans-serif;
   font-size: 0.9rem;
+  line-height: 1;
+  place-items: center;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.language-toggle:hover:not(:disabled),
+.language-toggle:active:not(:disabled),
+.language-toggle:focus-visible {
+  transform: none;
 }
 
 h1 {
