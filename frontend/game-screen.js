@@ -12,6 +12,7 @@
   }) {
     let currentGameId;
     let activeInfoTab = "log";
+    let pendingTargetMoveType;
     const gameLogEntries = [];
     const loggedRoundKeys = new Set();
     const loggedResultKeys = new Set();
@@ -51,6 +52,9 @@
       if (selectedTargetId && !attackTargets(gameState).some((target) => target.id === selectedTargetId)) {
         selectedTargetId = undefined;
         setSelectedTargetId(undefined);
+      }
+      if (!canSubmitMove(gameState)) {
+        pendingTargetMoveType = undefined;
       }
 
       const board = document.createElement("section");
@@ -106,6 +110,7 @@
     function syncGameLog(gameState) {
       if (gameState.id !== currentGameId) {
         currentGameId = gameState.id;
+        pendingTargetMoveType = undefined;
         gameLogEntries.length = 0;
         loggedRoundKeys.clear();
         loggedResultKeys.clear();
@@ -364,6 +369,10 @@
 
     function formatSubmittedMove(move) {
       const targetSuffix = move.targetId ? ` targeting ${move.targetId}` : "";
+      return `${formatMoveName(move.moveType)}${targetSuffix}`;
+    }
+
+    function formatMoveName(moveType) {
       const moveNames = {
         air_cannon: "Air Cannon",
         attack: "Attack",
@@ -375,50 +384,49 @@
         wave: "Wave",
       };
 
-      return `${moveNames[move.moveType] || move.moveType}${targetSuffix}`;
+      return moveNames[moveType] || moveType;
     }
 
     function createPowerDefenseWaveControls(gameState) {
       const controls = document.createElement("div");
       controls.className = "game-controls";
       const player = currentPlayer(gameState);
-      const selectedTargetId = getSelectedTargetId();
-      const hasTarget = Boolean(selectedTargetId);
+      const hasTargets = attackTargets(gameState).length > 0;
 
       const targetHint = document.createElement("p");
       targetHint.className = "action-helper";
-      targetHint.textContent = hasTarget
-        ? `Selected target: ${selectedTargetId}`
-        : "Click a player card on the left to choose a target for Wave or Air Cannon.";
+      targetHint.textContent = pendingTargetMoveType
+        ? `Choose a target for ${formatMoveName(pendingTargetMoveType)}.`
+        : "Choose Wave or Air Cannon first, then click a target player.";
 
       const powerButton = document.createElement("button");
       powerButton.type = "button";
       powerButton.textContent = `Power (+${gameState.rules.gainPowerAmount})`;
-      powerButton.addEventListener("click", () => sendGameMove("power"));
+      powerButton.addEventListener("click", () => sendImmediateMove("power"));
 
       const defenseButton = document.createElement("button");
       defenseButton.type = "button";
       defenseButton.textContent = "Defense";
       defenseButton.disabled = (player?.defenseStreak || 0) >= 2;
-      defenseButton.addEventListener("click", () => sendGameMove("defense"));
+      defenseButton.addEventListener("click", () => sendImmediateMove("defense"));
 
       const waveButton = document.createElement("button");
       waveButton.type = "button";
       waveButton.textContent = `Wave (${gameState.rules.waveCost} power)`;
-      waveButton.disabled = !hasTarget || player.power < gameState.rules.waveCost;
-      waveButton.addEventListener("click", () => sendGameMove("wave", selectedTargetId));
+      waveButton.disabled = !hasTargets || player.power < gameState.rules.waveCost;
+      waveButton.addEventListener("click", () => startTargetedMove("wave"));
 
       const superBlastButton = document.createElement("button");
       superBlastButton.type = "button";
       superBlastButton.textContent = `Super Blast (${gameState.rules.superBlastCost} power)`;
       superBlastButton.disabled = player.power < gameState.rules.superBlastCost;
-      superBlastButton.addEventListener("click", () => sendGameMove("super_blast"));
+      superBlastButton.addEventListener("click", () => sendImmediateMove("super_blast"));
 
       const airCannonButton = document.createElement("button");
       airCannonButton.type = "button";
       airCannonButton.textContent = "Air Cannon";
-      airCannonButton.disabled = !hasTarget;
-      airCannonButton.addEventListener("click", () => sendGameMove("air_cannon", selectedTargetId));
+      airCannonButton.disabled = !hasTargets;
+      airCannonButton.addEventListener("click", () => startTargetedMove("air_cannon"));
 
       const basicActions = document.createElement("div");
       basicActions.className = "action-group";
@@ -430,6 +438,18 @@
 
       controls.append(basicActions, targetedActions);
       return controls;
+    }
+
+    function startTargetedMove(moveType) {
+      pendingTargetMoveType = moveType;
+      setSelectedTargetId(undefined);
+      renderGameState(getCurrentGameState());
+    }
+
+    function sendImmediateMove(moveType) {
+      pendingTargetMoveType = undefined;
+      setSelectedTargetId(undefined);
+      sendGameMove(moveType);
     }
 
     function createMoveControls(gameState) {
@@ -507,12 +527,21 @@
     }
 
     function isTargetablePlayer(gameState, player) {
-      return attackTargets(gameState).some((target) => target.id === player.id);
+      return Boolean(
+        pendingTargetMoveType &&
+          canSubmitMove(gameState) &&
+          attackTargets(gameState).some((target) => target.id === player.id)
+      );
     }
 
     function selectPlayerTarget(targetId) {
+      if (!pendingTargetMoveType) {
+        return;
+      }
+      const moveType = pendingTargetMoveType;
+      pendingTargetMoveType = undefined;
       setSelectedTargetId(targetId);
-      renderGameState(getCurrentGameState());
+      sendGameMove(moveType, targetId);
     }
 
     return {
