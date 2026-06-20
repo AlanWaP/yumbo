@@ -9,6 +9,10 @@
     sendGameMove,
     formatPlayerIds,
   }) {
+    let currentGameId;
+    const gameLogEntries = [];
+    const loggedResultKeys = new Set();
+
     function show() {
       frame.hidden = false;
     }
@@ -37,6 +41,7 @@
         setPlaceholder("Room Ready", "Waiting for the first game state from the backend.");
         return;
       }
+      syncGameLog(gameState);
 
       let selectedTargetId = getSelectedTargetId();
       if (selectedTargetId && !attackTargets(gameState).some((target) => target.id === selectedTargetId)) {
@@ -61,19 +66,6 @@
         : "Choose one move. The round resolves after every alive player has moved.";
 
       header.append(heading, summary);
-
-      if (Array.isArray(gameState.lastResults) && gameState.lastResults.length > 0) {
-        const results = document.createElement("ul");
-        results.className = "round-results";
-        for (const result of gameState.lastResults) {
-          const item = document.createElement("li");
-          item.textContent = result.targetId
-            ? `${result.playerId} ${result.message} ${result.targetId}`
-            : `${result.playerId} ${result.message}`;
-          results.append(item);
-        }
-        header.append(results);
-      }
 
       const content = document.createElement("div");
       content.className = "game-board-content";
@@ -117,8 +109,69 @@
 
       playerPanel.append(playerPanelTitle, playerGrid);
       content.append(playerPanel, createActionPanel(gameState));
-      board.append(header, content);
+      board.append(header, createGameLogPanel(), content);
       frame.append(board);
+    }
+
+    function syncGameLog(gameState) {
+      if (gameState.id !== currentGameId) {
+        currentGameId = gameState.id;
+        gameLogEntries.length = 0;
+        loggedResultKeys.clear();
+      }
+
+      if (!Array.isArray(gameState.lastResults) || gameState.lastResults.length === 0) {
+        return;
+      }
+
+      const resultRound = gameState.phase === "finished"
+        ? gameState.round
+        : Math.max(1, gameState.round - 1);
+      const resultKey = `${resultRound}:${JSON.stringify(gameState.lastResults)}`;
+      if (loggedResultKeys.has(resultKey)) {
+        return;
+      }
+
+      loggedResultKeys.add(resultKey);
+      gameLogEntries.push({ type: "round", text: `Round ${resultRound}` });
+      for (const result of gameState.lastResults) {
+        gameLogEntries.push({ type: "result", text: formatResultLine(result) });
+      }
+    }
+
+    function createGameLogPanel() {
+      const panel = document.createElement("section");
+      panel.className = "game-log-panel";
+
+      const title = document.createElement("h3");
+      title.textContent = "Game log";
+
+      const frame = document.createElement("div");
+      frame.className = "game-log-frame";
+
+      if (gameLogEntries.length === 0) {
+        const empty = document.createElement("p");
+        empty.className = "game-log-empty";
+        empty.textContent = "Round results will appear here.";
+        frame.append(empty);
+      } else {
+        for (const entry of gameLogEntries) {
+          const line = document.createElement("p");
+          line.className = entry.type === "round" ? "game-log-round" : "game-log-line";
+          line.textContent = entry.text;
+          frame.append(line);
+        }
+      }
+
+      panel.append(title, frame);
+      frame.scrollTop = frame.scrollHeight;
+      return panel;
+    }
+
+    function formatResultLine(result) {
+      return result.targetId
+        ? `${result.playerId} ${result.message} ${result.targetId}`
+        : `${result.playerId} ${result.message}`;
     }
 
     function createActionPanel(gameState) {
