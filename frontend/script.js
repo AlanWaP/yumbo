@@ -47,6 +47,7 @@ let isQueued = false;
 let lobbyGames = [];
 let currentGameState;
 let submittedRound;
+let submittedMove;
 let selectedTargetId;
 
 const waitingRoom = window.createWaitingRoom({
@@ -64,6 +65,7 @@ const gameScreen = window.createGameScreen({
   frame: gameFrame,
   getPlayerId: () => playerId,
   getSubmittedRound: () => submittedRound,
+  getSubmittedMove: () => submittedMove,
   getSelectedTargetId: () => selectedTargetId,
   setSelectedTargetId: (targetId) => {
     selectedTargetId = targetId;
@@ -174,6 +176,7 @@ function connect(rawUrl) {
     lobbyGames = [];
     currentGameState = undefined;
     submittedRound = undefined;
+    submittedMove = undefined;
     selectedTargetId = undefined;
     updateLabels();
     renderExistingGames();
@@ -217,6 +220,7 @@ function handleServerMessage(rawMessage) {
     isQueued = true;
     currentGameState = undefined;
     submittedRound = undefined;
+    submittedMove = undefined;
     selectedTargetId = undefined;
     updateLabels();
     setStatus("Waiting for players...");
@@ -238,6 +242,7 @@ function handleServerMessage(rawMessage) {
     setStatus("Room created. Choose a move for round one.");
     currentGameState = message.payload;
     submittedRound = undefined;
+    submittedMove = undefined;
     selectedTargetId = undefined;
     showGameFrame();
     renderGameState(currentGameState);
@@ -253,6 +258,7 @@ function handleServerMessage(rawMessage) {
     isQueued = false;
     currentGameState = undefined;
     submittedRound = undefined;
+    submittedMove = undefined;
     selectedTargetId = undefined;
     updateLabels();
     setStatus("You are not in the queue.");
@@ -271,6 +277,7 @@ function handleServerMessage(rawMessage) {
     isQueued = false;
     currentGameState = undefined;
     submittedRound = undefined;
+    submittedMove = undefined;
     selectedTargetId = undefined;
     updateLabels();
     setStatus(message.type === "peer_left" ? "The other player left." : "You left the room.");
@@ -301,6 +308,7 @@ function handleServerMessage(rawMessage) {
     currentGameState = message.payload;
     if (currentGameState?.round !== submittedRound) {
       submittedRound = undefined;
+      submittedMove = undefined;
       selectedTargetId = undefined;
     }
     setStatus(formatGameStatus(message.type, currentGameState));
@@ -399,6 +407,10 @@ function renderGameState(gameState) {
 }
 
 function sendGameMove(moveType, targetId) {
+  submittedMove = {
+    moveType,
+    targetId,
+  };
   send({
     type: "game_move",
     payload: {

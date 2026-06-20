@@ -295,13 +295,6 @@ button.game-card:hover:not(:disabled) {
   gap: 18px;
 }
 
-.game-board-header {
-  display: grid;
-  gap: 8px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid #dfe4f2;
-}
-
 .game-log-panel {
   display: grid;
   gap: 10px;

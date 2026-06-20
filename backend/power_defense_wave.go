@@ -245,7 +245,7 @@ func (g *gameSession) powerDefenseWaveEliminationReason(move submittedMove, atta
 			return "hit by super blast"
 		}
 	case moveTypeAirCannon:
-		if len(attacks) > 0 {
+		if g.hasUnblockedAirCannonAttack(move, attacks) {
 			return "attacked while using air cannon"
 		}
 	default:
@@ -255,4 +255,15 @@ func (g *gameSession) powerDefenseWaveEliminationReason(move submittedMove, atta
 	}
 
 	return ""
+}
+
+func (g *gameSession) hasUnblockedAirCannonAttack(move submittedMove, attacks []powerDefenseWaveAttack) bool {
+	for _, attack := range attacks {
+		if attack.AttackerID == move.TargetID && attack.MoveType == moveTypeSuperBlast {
+			continue
+		}
+		return true
+	}
+
+	return false
 }

@@ -140,6 +140,9 @@ func TestPowerDefenseWaveAirCannonEliminatesSuperBlastButDoesNotCancelIt(t *test
 	if session.Players["player_two"].Alive {
 		t.Fatal("expected air cannon target using super blast to be eliminated")
 	}
+	if !session.Players["player_one"].Alive {
+		t.Fatal("expected air cannon user to survive the targeted super blast")
+	}
 	if session.Players["player_three"].Alive {
 		t.Fatal("expected super blast to still attack other players")
 	}

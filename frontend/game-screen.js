@@ -3,6 +3,7 @@
     frame,
     getPlayerId,
     getSubmittedRound,
+    getSubmittedMove,
     getSelectedTargetId,
     setSelectedTargetId,
     getCurrentGameState,
@@ -11,7 +12,9 @@
   }) {
     let currentGameId;
     const gameLogEntries = [];
+    const loggedRoundKeys = new Set();
     const loggedResultKeys = new Set();
+    const loggedFinishKeys = new Set();
 
     function show() {
       frame.hidden = false;
@@ -51,21 +54,6 @@
 
       const board = document.createElement("section");
       board.className = "game-board";
-
-      const header = document.createElement("header");
-      header.className = "game-board-header";
-
-      const heading = document.createElement("h2");
-      heading.textContent = gameState.phase === "finished"
-        ? "Game finished"
-        : `Round ${gameState.round}`;
-
-      const summary = document.createElement("p");
-      summary.textContent = gameState.phase === "finished"
-        ? `Winner: ${formatPlayerIds(gameState.winners)}`
-        : "Choose one move. The round resolves after every alive player has moved.";
-
-      header.append(heading, summary);
 
       const content = document.createElement("div");
       content.className = "game-board-content";
@@ -109,34 +97,60 @@
 
       playerPanel.append(playerPanelTitle, playerGrid);
       content.append(playerPanel, createActionPanel(gameState));
-      board.append(header, createGameLogPanel(), content);
+      board.append(createGameLogPanel(), content);
       frame.append(board);
+      scrollLogToBottom();
     }
 
     function syncGameLog(gameState) {
       if (gameState.id !== currentGameId) {
         currentGameId = gameState.id;
         gameLogEntries.length = 0;
+        loggedRoundKeys.clear();
         loggedResultKeys.clear();
+        loggedFinishKeys.clear();
       }
 
-      if (!Array.isArray(gameState.lastResults) || gameState.lastResults.length === 0) {
+      if (Array.isArray(gameState.lastResults) && gameState.lastResults.length > 0) {
+        const resultRound = gameState.phase === "finished"
+          ? gameState.round
+          : Math.max(1, gameState.round - 1);
+        const resultKey = `${resultRound}:${JSON.stringify(gameState.lastResults)}`;
+        if (!loggedResultKeys.has(resultKey)) {
+          loggedResultKeys.add(resultKey);
+          appendRoundMarker(resultRound);
+          for (const result of gameState.lastResults) {
+            gameLogEntries.push({ type: "result", text: formatResultLine(result) });
+          }
+        }
+      }
+
+      if (gameState.phase !== "finished") {
+        appendRoundMarker(gameState.round);
+      } else {
+        appendFinishedMarker(gameState);
+      }
+    }
+
+    function appendRoundMarker(round) {
+      const roundKey = String(round);
+      if (loggedRoundKeys.has(roundKey)) {
         return;
       }
 
-      const resultRound = gameState.phase === "finished"
-        ? gameState.round
-        : Math.max(1, gameState.round - 1);
-      const resultKey = `${resultRound}:${JSON.stringify(gameState.lastResults)}`;
-      if (loggedResultKeys.has(resultKey)) {
+      loggedRoundKeys.add(roundKey);
+      gameLogEntries.push({ type: "round", text: `Round ${round}` });
+    }
+
+    function appendFinishedMarker(gameState) {
+      const finishKey = String(gameState.id);
+      if (loggedFinishKeys.has(finishKey)) {
         return;
       }
 
-      loggedResultKeys.add(resultKey);
-      gameLogEntries.push({ type: "round", text: `Round ${resultRound}` });
-      for (const result of gameState.lastResults) {
-        gameLogEntries.push({ type: "result", text: formatResultLine(result) });
-      }
+      loggedFinishKeys.add(finishKey);
+      gameLogEntries.push({ type: "round", text: "Game finished" });
+      gameLogEntries.push({ type: "result", text: `Winner: ${formatPlayerIds(gameState.winners)}` });
     }
 
     function createGameLogPanel() {
@@ -164,8 +178,18 @@
       }
 
       panel.append(title, frame);
-      frame.scrollTop = frame.scrollHeight;
       return panel;
+    }
+
+    function scrollLogToBottom() {
+      const logFrame = frame.querySelector(".game-log-frame");
+      if (!logFrame) {
+        return;
+      }
+
+      requestAnimationFrame(() => {
+        logFrame.scrollTop = logFrame.scrollHeight;
+      });
     }
 
     function formatResultLine(result) {
@@ -189,7 +213,10 @@
         if (gameState.phase === "finished") {
           helperText.textContent = "The game is over.";
         } else if (getSubmittedRound() === gameState.round) {
-          helperText.textContent = "You already moved this round. Waiting for other players.";
+          const submittedMove = getSubmittedMove();
+          helperText.textContent = submittedMove
+            ? `You chose ${formatSubmittedMove(submittedMove)}. Waiting for other players.`
+            : "You already moved this round. Waiting for other players.";
         } else if (!currentPlayer(gameState)?.alive) {
           helperText.textContent = "You are eliminated and cannot move.";
         } else {
@@ -207,6 +234,22 @@
           : createMoveControls(gameState)
       );
       return panel;
+    }
+
+    function formatSubmittedMove(move) {
+      const targetSuffix = move.targetId ? ` targeting ${move.targetId}` : "";
+      const moveNames = {
+        air_cannon: "Air Cannon",
+        attack: "Attack",
+        defense: "Defense",
+        defend: "Defend",
+        gain_power: "Gain power",
+        power: "Power",
+        super_blast: "Super Blast",
+        wave: "Wave",
+      };
+
+      return `${moveNames[move.moveType] || move.moveType}${targetSuffix}`;
     }
 
     function createPowerDefenseWaveControls(gameState) {
