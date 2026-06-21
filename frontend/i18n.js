@@ -1,6 +1,12 @@
 (function () {
   const supportedLanguages = ["en", "zh"];
-  const savedLanguage = localStorage.getItem("yumboLanguage");
+  const languageStorageKey = "yumboLanguage";
+
+  function readSavedLanguage() {
+    return sessionStorage.getItem(languageStorageKey) || localStorage.getItem(languageStorageKey);
+  }
+
+  const savedLanguage = readSavedLanguage();
   let currentLanguage = supportedLanguages.includes(savedLanguage) ? savedLanguage : "en";
   const listeners = new Set();
 
@@ -391,7 +397,8 @@
     }
 
     currentLanguage = language;
-    localStorage.setItem("yumboLanguage", language);
+    sessionStorage.setItem(languageStorageKey, language);
+    localStorage.setItem(languageStorageKey, language);
     applyStaticTranslations();
     listeners.forEach((listener) => listener(language));
   }
