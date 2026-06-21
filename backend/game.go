@@ -425,6 +425,29 @@ func (g *gameSession) winner() (string, []string, bool) {
 	return "", nil, true
 }
 
+func (g *gameSession) finishDueToPlayerDeparture(departedPlayerID string) {
+	if g == nil || g.Phase == gamePhaseFinished {
+		return
+	}
+
+	if departedPlayer := g.Players[departedPlayerID]; departedPlayer != nil {
+		departedPlayer.Alive = false
+		departedPlayer.Health = 0
+	}
+
+	g.PendingMoves = map[string]submittedMove{}
+	g.LastResults = append(g.LastResults, roundResult{
+		PlayerID: departedPlayerID,
+		Message:  "left the game",
+	})
+
+	winnerTeamID, winners, _ := g.winner()
+	g.Phase = gamePhaseFinished
+	g.WinnerTeamID = winnerTeamID
+	g.Winners = winners
+	g.Deadline = nil
+}
+
 func marshalPayload(payload any) json.RawMessage {
 	bytes, err := json.Marshal(payload)
 	if err != nil {

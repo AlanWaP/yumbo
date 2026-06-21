@@ -331,17 +331,25 @@ func TestLeaveRoomNotifiesPeerAndClearsRoom(t *testing.T) {
 	gameHub.handleMessage(playerTwo, clientMessage{Type: "join_queue", GameType: "rps"})
 	gameHub.handleMessage(playerOne, clientMessage{Type: "leave_room"})
 
-	if len(gameHub.rooms) != 0 {
-		t.Fatalf("expected room to be removed, got %d rooms", len(gameHub.rooms))
+	if len(gameHub.rooms) != 1 {
+		t.Fatalf("expected room to remain for peer, got %d rooms", len(gameHub.rooms))
 	}
-	if playerOne.roomID != "" || playerTwo.roomID != "" {
-		t.Fatalf("expected room IDs to clear, got %q and %q", playerOne.roomID, playerTwo.roomID)
+	if playerOne.roomID != "" {
+		t.Fatalf("expected leaving player room to clear, got %q", playerOne.roomID)
+	}
+	if playerTwo.roomID == "" {
+		t.Fatal("expected remaining peer to stay in room")
 	}
 	if got := lastMessage(t, playerOneConn).Type; got != "room_left" {
 		t.Fatalf("expected leaving player to get room_left, got %q", got)
 	}
-	if got := lastMessage(t, playerTwoConn).Type; got != "peer_left" {
-		t.Fatalf("expected peer to get peer_left, got %q", got)
+	peerMessage := lastMessage(t, playerTwoConn)
+	if peerMessage.Type != "peer_left" {
+		t.Fatalf("expected peer to get peer_left, got %q", peerMessage.Type)
+	}
+	gameState := decodePayload[gameSession](t, peerMessage.Payload)
+	if gameState.Phase != gamePhaseFinished {
+		t.Fatalf("expected game to finish after peer left, got phase %q", gameState.Phase)
 	}
 }
 
@@ -448,14 +456,19 @@ func TestRemovePlayerCleansQueueAndNotifiesRoomPeer(t *testing.T) {
 
 	gameHub.removePlayer(playerOne)
 
-	if len(gameHub.rooms) != 0 {
-		t.Fatalf("expected room to be removed, got %d rooms", len(gameHub.rooms))
+	if len(gameHub.rooms) != 1 {
+		t.Fatalf("expected room to remain for peer, got %d rooms", len(gameHub.rooms))
 	}
-	if got := lastMessage(t, playerTwoConn).Type; got != "peer_left" {
-		t.Fatalf("expected remaining peer to get peer_left, got %q", got)
+	peerMessage := lastMessage(t, playerTwoConn)
+	if peerMessage.Type != "peer_left" {
+		t.Fatalf("expected remaining peer to get peer_left, got %q", peerMessage.Type)
 	}
-	if playerTwo.roomID != "" || playerTwo.gameType != "" {
-		t.Fatalf("expected remaining peer room state to clear, got room %q game %q", playerTwo.roomID, playerTwo.gameType)
+	if playerTwo.roomID == "" {
+		t.Fatalf("expected remaining peer to stay in room")
+	}
+	gameState := decodePayload[gameSession](t, peerMessage.Payload)
+	if gameState.Phase != gamePhaseFinished {
+		t.Fatalf("expected game to finish after peer removed, got phase %q", gameState.Phase)
 	}
 }
 
@@ -577,21 +590,29 @@ func TestDetachWithoutRefreshLeavesImmediately(t *testing.T) {
 
 	gameHub.detachPlayer(playerOne, playerOneConn)
 
-	if len(gameHub.rooms) != 0 {
-		t.Fatalf("expected room to be removed on window close, got %d rooms", len(gameHub.rooms))
+	if len(gameHub.rooms) != 1 {
+		t.Fatalf("expected room to remain for peer after window close, got %d rooms", len(gameHub.rooms))
 	}
 	if gameHub.players["player_11111111"] != nil {
 		t.Fatal("expected disconnected player to be removed")
 	}
-	if got := lastMessage(t, playerTwoConn).Type; got != "peer_left" {
-		t.Fatalf("expected peer_left, got %q", got)
+	peerMessage := lastMessage(t, playerTwoConn)
+	if peerMessage.Type != "peer_left" {
+		t.Fatalf("expected peer_left, got %q", peerMessage.Type)
+	}
+	if playerTwo.roomID == "" {
+		t.Fatal("expected remaining peer to stay in room")
+	}
+	gameState := decodePayload[gameSession](t, peerMessage.Payload)
+	if gameState.Phase != gamePhaseFinished {
+		t.Fatalf("expected game to finish after peer left, got phase %q", gameState.Phase)
 	}
 }
 
 func TestLeaveSessionRemovesPlayerImmediately(t *testing.T) {
 	gameHub := newHub()
 	playerOne, playerOneConn := addTestPlayer(gameHub, "player_11111111")
-	playerTwo, _ := addTestPlayer(gameHub, "player_22222222")
+	_, _ = addTestPlayer(gameHub, "player_22222222")
 
 	gameHub.handleMessage(playerOne, clientMessage{Type: "join_queue", GameType: "cards", PlayerCount: 3})
 	gameHub.leaveSession(playerOne)

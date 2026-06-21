@@ -374,7 +374,7 @@ function handleServerMessage(rawMessage) {
     return;
   }
 
-  if (message.type === "room_left" || message.type === "peer_left") {
+  if (message.type === "room_left") {
     roomId = undefined;
     gameType = undefined;
     gameMode = undefined;
@@ -385,11 +385,38 @@ function handleServerMessage(rawMessage) {
     submittedMove = undefined;
     selectedTargetId = undefined;
     updateLabels();
-    setStatus(message.type === "peer_left" ? "status.peerLeft" : "status.leftRoom");
+    setStatus("status.leftRoom");
     showWaitingRoom();
     joinQueueButton.hidden = false;
     leaveQueueButton.hidden = true;
     leaveRoomButton.hidden = true;
+    return;
+  }
+
+  if (message.type === "peer_left") {
+    submittedRound = undefined;
+    submittedMove = undefined;
+    selectedTargetId = undefined;
+    if (message.payload) {
+      currentGameState = message.payload;
+      updateLabels();
+      if (currentGameState.phase === "finished") {
+        setStatus("status.peerLeftGameEnded", {
+          player: message.playerId || t("labels.playerUnassigned"),
+          winners: formatPlayerIds(currentGameState.winners),
+        });
+      } else {
+        setStatus("status.peerLeft", { player: message.playerId || t("labels.playerUnassigned") });
+      }
+      showGameFrame();
+      renderGameState(currentGameState);
+    } else {
+      setStatus("status.peerLeft", { player: message.playerId || t("labels.playerUnassigned") });
+      showWaitingRoom();
+    }
+    joinQueueButton.hidden = false;
+    leaveQueueButton.hidden = true;
+    leaveRoomButton.hidden = false;
     return;
   }
 

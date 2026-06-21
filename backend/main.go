@@ -400,38 +400,79 @@ func (h *hub) leaveRoomLocked(currentPlayer *player, reason string, messages *[]
 		return
 	}
 
-	delete(h.rooms, currentRoom.id)
+	departingPlayerID := currentPlayer.id
+	roomID := currentRoom.id
+	gameType := currentRoom.gameType
+	gameMode := currentRoom.gameMode
+	teamCount := currentRoom.teamCount
+	playerCount := currentRoom.playerCount
+	gamePayload := marshalPayload(currentRoom.game)
+
+	if currentRoom.game != nil && currentRoom.game.Phase != gamePhaseFinished {
+		currentRoom.game.finishDueToPlayerDeparture(departingPlayerID)
+		gamePayload = marshalPayload(currentRoom.game)
+	}
+
+	currentRoom.playerIDs = removePlayerID(currentRoom.playerIDs, departingPlayerID)
+
+	if currentPlayer.conn != nil {
+		*messages = append(*messages, outboundMessage{
+			player: currentPlayer,
+			body: serverMessage{
+				Type:        "room_left",
+				PlayerID:    departingPlayerID,
+				RoomID:      roomID,
+				GameType:    gameType,
+				GameMode:    gameMode,
+				TeamCount:   teamCount,
+				PlayerCount: playerCount,
+				Reason:      reason,
+			},
+		})
+	}
+
+	currentPlayer.roomID = ""
+	currentPlayer.gameType = ""
+	currentPlayer.gameMode = ""
+	currentPlayer.teamCount = 0
+	currentPlayer.playerCount = 0
+	currentPlayer.queueKey = ""
+
 	for _, playerID := range currentRoom.playerIDs {
 		roomPlayer := h.players[playerID]
-		if roomPlayer == nil {
+		if roomPlayer == nil || roomPlayer.conn == nil {
 			continue
-		}
-
-		roomPlayer.roomID = ""
-		roomPlayer.gameType = ""
-		roomPlayer.gameMode = ""
-		roomPlayer.teamCount = 0
-		roomPlayer.playerCount = 0
-		roomPlayer.queueKey = ""
-		messageType := "room_left"
-		if roomPlayer.id != currentPlayer.id {
-			messageType = "peer_left"
 		}
 
 		*messages = append(*messages, outboundMessage{
 			player: roomPlayer,
 			body: serverMessage{
-				Type:        messageType,
-				PlayerID:    currentPlayer.id,
-				RoomID:      currentRoom.id,
-				GameType:    currentRoom.gameType,
-				GameMode:    currentRoom.gameMode,
-				TeamCount:   currentRoom.teamCount,
-				PlayerCount: currentRoom.playerCount,
+				Type:        "peer_left",
+				PlayerID:    departingPlayerID,
+				RoomID:      roomID,
+				GameType:    gameType,
+				GameMode:    gameMode,
+				TeamCount:   teamCount,
+				PlayerCount: playerCount,
 				Reason:      reason,
+				Payload:     gamePayload,
 			},
 		})
 	}
+
+	if len(currentRoom.playerIDs) == 0 {
+		delete(h.rooms, roomID)
+	}
+}
+
+func removePlayerID(playerIDs []string, playerID string) []string {
+	filtered := playerIDs[:0]
+	for _, id := range playerIDs {
+		if id != playerID {
+			filtered = append(filtered, id)
+		}
+	}
+	return filtered
 }
 
 func (h *hub) sendLobby(currentPlayer *player) {
