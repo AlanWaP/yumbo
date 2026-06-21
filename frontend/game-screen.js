@@ -7,6 +7,7 @@
     getSelectedTargetId,
     setSelectedTargetId,
     getCurrentGameState,
+    getLastMoveReceipt,
     sendGameMove,
     cancelGameMove,
     formatPlayerIds,
@@ -402,7 +403,7 @@
       if (!canSubmitMove(gameState)) {
         if (gameState.phase === "finished") {
           helperText.textContent = t("game.over");
-        } else if (getSubmittedRound() === gameState.round) {
+        } else if (hasSubmittedThisRound(gameState)) {
           const submittedMove = getSubmittedMove();
           helperText.textContent = submittedMove
             ? t("game.choseMove", { move: formatSubmittedMove(submittedMove) })
@@ -463,45 +464,61 @@
         actions.append(confirmButton);
       }
 
-      actions.append(createCancelButton(gameState));
+      actions.append(createCancelButton());
       return actions;
     }
 
     function createSubmittedMoveActions(gameState) {
-      if (
-        gameState.phase !== "waiting_for_moves" ||
-        getSubmittedRound() !== gameState.round ||
-        allPlayersSubmitted(gameState)
-      ) {
+      if (!shouldOfferMoveCancel(gameState)) {
         return document.createDocumentFragment();
       }
 
       const actions = document.createElement("div");
       actions.className = "action-buttons";
-      actions.append(createCancelButton(gameState));
+      actions.append(createCancelButton());
       return actions;
     }
 
-    function allPlayersSubmitted(gameState) {
-      const submittedPlayers = gameState.submittedPlayers;
-      if (!Array.isArray(submittedPlayers)) {
+    function roundNumber(value) {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : undefined;
+    }
+
+    function hasSubmittedThisRound(gameState) {
+      const submittedRound = roundNumber(getSubmittedRound());
+      const currentRound = roundNumber(gameState?.round);
+      return submittedRound !== undefined && submittedRound === currentRound;
+    }
+
+    function shouldOfferMoveCancel(gameState) {
+      if (gameState?.phase !== "waiting_for_moves" || !hasSubmittedThisRound(gameState)) {
         return false;
       }
 
+      const receipt = getLastMoveReceipt();
+      if (Array.isArray(receipt?.neededPlayers) && Array.isArray(receipt?.submittedPlayers)) {
+        return receipt.submittedPlayers.length < receipt.neededPlayers.length;
+      }
+
+      const submittedPlayers = gameState.submittedPlayers;
       const alivePlayers = Object.values(gameState.players || {}).filter((player) => player.alive);
-      return alivePlayers.length > 0 && submittedPlayers.length >= alivePlayers.length;
+      if (Array.isArray(submittedPlayers) && alivePlayers.length > 0) {
+        return submittedPlayers.length < alivePlayers.length;
+      }
+
+      return Boolean(getSubmittedMove());
     }
 
     function canCancelSubmittedMove(gameState) {
-      return getSubmittedRound() === gameState.round && !allPlayersSubmitted(gameState);
+      return shouldOfferMoveCancel(gameState);
     }
 
-    function createCancelButton(gameState) {
+    function createCancelButton() {
       const cancelButton = document.createElement("button");
       cancelButton.type = "button";
       cancelButton.className = "action-cancel-button";
       cancelButton.textContent = t("game.cancelMove");
-      cancelButton.addEventListener("click", () => cancelSelection(gameState));
+      cancelButton.addEventListener("click", () => cancelSelection());
       return cancelButton;
     }
 
@@ -532,8 +549,9 @@
       }
     }
 
-    function cancelSelection(gameState) {
-      if (getSubmittedRound() === gameState.round) {
+    function cancelSelection() {
+      const gameState = getCurrentGameState();
+      if (hasSubmittedThisRound(gameState)) {
         if (!canCancelSubmittedMove(gameState)) {
           return;
         }

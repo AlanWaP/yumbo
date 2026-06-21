@@ -48,6 +48,7 @@ let currentGameState;
 let submittedRound;
 let submittedMove;
 let selectedTargetId;
+let lastMoveReceipt;
 let currentStatus = { key: "status.enterBackend" };
 let activeServerUrl;
 let intentionalClose = false;
@@ -116,6 +117,7 @@ const gameScreen = window.createGameScreen({
     selectedTargetId = targetId;
   },
   getCurrentGameState: () => currentGameState,
+  getLastMoveReceipt: () => lastMoveReceipt,
   sendGameMove,
   cancelGameMove,
   formatPlayerIds,
@@ -318,6 +320,7 @@ function resetSessionState() {
   submittedRound = undefined;
   submittedMove = undefined;
   selectedTargetId = undefined;
+  lastMoveReceipt = undefined;
   updateLabels();
   renderExistingGames();
   hideGameSurfaces();
@@ -436,13 +439,21 @@ function handleServerMessage(rawMessage) {
   }
 
   if (message.type === "game_move_accepted") {
+    lastMoveReceipt = message.payload;
     submittedRound = message.payload?.round;
+    if (currentGameState && message.payload?.submittedPlayers) {
+      currentGameState = {
+        ...currentGameState,
+        submittedPlayers: message.payload.submittedPlayers,
+      };
+    }
     setStatus("status.moveSubmitted");
     renderGameState(currentGameState);
     return;
   }
 
   if (message.type === "game_move_cancelled") {
+    lastMoveReceipt = undefined;
     submittedRound = undefined;
     submittedMove = undefined;
     selectedTargetId = undefined;
@@ -457,10 +468,16 @@ function handleServerMessage(rawMessage) {
     message.type === "game_finished"
   ) {
     currentGameState = message.payload;
-    if (currentGameState?.round !== submittedRound) {
+    if (roundNumber(currentGameState?.round) !== roundNumber(submittedRound)) {
+      lastMoveReceipt = undefined;
       submittedRound = undefined;
       submittedMove = undefined;
       selectedTargetId = undefined;
+    } else if (lastMoveReceipt && Array.isArray(currentGameState?.submittedPlayers)) {
+      lastMoveReceipt = {
+        ...lastMoveReceipt,
+        submittedPlayers: currentGameState.submittedPlayers,
+      };
     }
     setGameStatus(message.type, currentGameState);
     updateLabels();
@@ -485,6 +502,7 @@ function applyQueuedState(message) {
   submittedRound = undefined;
   submittedMove = undefined;
   selectedTargetId = undefined;
+  lastMoveReceipt = undefined;
   updateLabels();
   setStatus(message.type === "already_queued" && message.restored ? "status.sessionRestoredQueue" : "status.waitingPlayers");
   showWaitingRoom();
@@ -568,6 +586,11 @@ function joinQueue(gameToJoin) {
 
 function requestLobby() {
   send({ type: "request_lobby" });
+}
+
+function roundNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function send(message) {
