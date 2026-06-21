@@ -10,6 +10,7 @@ import (
 	"os"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -24,15 +25,17 @@ type jsonWriter interface {
 }
 
 type player struct {
-	id          string
-	conn        jsonWriter
-	roomID      string
-	gameType    string
-	gameMode    string
-	teamCount   int
-	playerCount int
-	queueKey    string
-	writeMu     sync.Mutex
+	id                string
+	conn              jsonWriter
+	roomID            string
+	gameType          string
+	gameMode          string
+	teamCount         int
+	playerCount       int
+	queueKey          string
+	writeMu           sync.Mutex
+	disconnectTimer   *time.Timer
+	refreshDisconnect bool
 }
 
 type room struct {
@@ -66,6 +69,7 @@ type serverMessage struct {
 	Games       []gameSummary   `json:"games,omitempty"`
 	Message     string          `json:"message,omitempty"`
 	Reason      string          `json:"reason,omitempty"`
+	Restored    bool            `json:"restored,omitempty"`
 	Payload     json.RawMessage `json:"payload,omitempty"`
 }
 
@@ -141,14 +145,17 @@ func handleWebSocket(gameHub *hub, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	currentPlayer := gameHub.addPlayer(conn)
+	currentPlayer, reconnected := gameHub.registerPlayer(conn, r.URL.Query().Get("playerId"))
 	send(currentPlayer, serverMessage{
 		Type:     "connected",
 		PlayerID: currentPlayer.id,
 	})
+	if reconnected {
+		gameHub.sendSessionRestore(currentPlayer)
+	}
 	gameHub.sendLobby(currentPlayer)
 
-	defer gameHub.removePlayer(currentPlayer)
+	defer gameHub.detachPlayer(currentPlayer, conn)
 
 	for {
 		var message clientMessage
@@ -157,18 +164,6 @@ func handleWebSocket(gameHub *hub, w http.ResponseWriter, r *http.Request) {
 		}
 		gameHub.handleMessage(currentPlayer, message)
 	}
-}
-
-func (h *hub) addPlayer(conn jsonWriter) *player {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	currentPlayer := &player{
-		id:   createID("player"),
-		conn: conn,
-	}
-	h.players[currentPlayer.id] = currentPlayer
-	return currentPlayer
 }
 
 func (h *hub) handleMessage(currentPlayer *player, message clientMessage) {
@@ -183,6 +178,12 @@ func (h *hub) handleMessage(currentPlayer *player, message clientMessage) {
 		h.sendLobby(currentPlayer)
 	case "game_move":
 		h.handleGameMove(currentPlayer, message.Payload)
+	case "cancel_move":
+		h.handleCancelMove(currentPlayer)
+	case "refresh_pending":
+		h.markRefreshPending(currentPlayer)
+	case "leave_session":
+		h.leaveSession(currentPlayer)
 	case "room_message":
 		h.relayRoomMessage(currentPlayer, message.Payload)
 	default:
@@ -248,6 +249,45 @@ func (h *hub) handleGameMove(currentPlayer *player, payload json.RawMessage) {
 	flushMessages(messages)
 }
 
+func (h *hub) handleCancelMove(currentPlayer *player) {
+	h.mu.Lock()
+	var messages []outboundMessage
+
+	currentRoom := h.rooms[currentPlayer.roomID]
+	if currentRoom == nil {
+		messages = append(messages, errorMessage(currentPlayer, "You are not in a room."))
+		h.mu.Unlock()
+		flushMessages(messages)
+		return
+	}
+
+	receipt, err := currentRoom.game.cancelMove(currentPlayer.id)
+	if err != nil {
+		messages = append(messages, errorMessage(currentPlayer, err.Error()))
+		h.mu.Unlock()
+		flushMessages(messages)
+		return
+	}
+
+	messages = append(messages, outboundMessage{
+		player: currentPlayer,
+		body: serverMessage{
+			Type:        "game_move_cancelled",
+			PlayerID:    currentPlayer.id,
+			RoomID:      currentRoom.id,
+			GameType:    currentRoom.gameType,
+			GameMode:    currentRoom.gameMode,
+			TeamCount:   currentRoom.teamCount,
+			PlayerCount: currentRoom.playerCount,
+			Payload:     marshalPayload(receipt),
+		},
+	})
+	h.appendGameBroadcastLocked(currentRoom, "game_state", &messages)
+
+	h.mu.Unlock()
+	flushMessages(messages)
+}
+
 func (h *hub) relayRoomMessage(currentPlayer *player, payload json.RawMessage) {
 	h.mu.Lock()
 	var messages []outboundMessage
@@ -287,19 +327,24 @@ func (h *hub) removePlayer(currentPlayer *player) {
 	h.mu.Lock()
 	var messages []outboundMessage
 
+	h.cancelPlayerCleanupLocked(currentPlayer)
+
 	if currentPlayer.queueKey != "" {
 		h.removeFromQueueLocked(currentPlayer.id, currentPlayer.queueKey)
 	}
 	h.leaveRoomLocked(currentPlayer, "peer_disconnected", &messages)
+	currentPlayer.gameType = ""
+	currentPlayer.gameMode = ""
+	currentPlayer.teamCount = 0
+	currentPlayer.playerCount = 0
+	currentPlayer.queueKey = ""
+	currentPlayer.roomID = ""
 	delete(h.players, currentPlayer.id)
 	h.prependLobbyBroadcastLocked(&messages)
 
 	h.mu.Unlock()
 	flushMessages(messages)
-
-	if closer, ok := currentPlayer.conn.(interface{ Close() error }); ok {
-		_ = closer.Close()
-	}
+	closeConn(currentPlayer.conn)
 }
 
 func (h *hub) createRoomLocked(gameType string, gameMode string, teamCount int, playerCount int, roomPlayers []*player, messages *[]outboundMessage) {
@@ -511,7 +556,7 @@ func flushMessages(messages []outboundMessage) {
 }
 
 func send(currentPlayer *player, message serverMessage) {
-	if currentPlayer == nil {
+	if currentPlayer == nil || currentPlayer.conn == nil {
 		return
 	}
 

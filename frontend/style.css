@@ -480,6 +480,36 @@ button.game-card:hover:not(:disabled) {
   padding: 12px 16px;
 }
 
+.game-controls button.selected-move {
+  border-color: #3a63f3;
+  box-shadow: 0 0 0 2px rgba(58, 99, 243, 0.18);
+  background: #f8faff;
+}
+
+.action-buttons {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.action-buttons button {
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: 999px;
+}
+
+.action-confirm-button {
+  background: #3a63f3;
+  color: #ffffff;
+}
+
+.action-cancel-button {
+  background: #ffffff;
+  color: #33406a;
+  border: 1px solid #cfd7eb;
+}
+
 .action-helper {
   margin-bottom: 14px;
 }

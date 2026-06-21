@@ -45,6 +45,17 @@ type gameSession struct {
 	LastResults  []roundResult            `json:"lastResults,omitempty"`
 }
 
+func (g *gameSession) MarshalJSON() ([]byte, error) {
+	type gameSessionPublic gameSession
+	return json.Marshal(struct {
+		gameSessionPublic
+		SubmittedPlayers []string `json:"submittedPlayers,omitempty"`
+	}{
+		gameSessionPublic: gameSessionPublic(*g),
+		SubmittedPlayers:  g.submittedPlayers(),
+	})
+}
+
 type gamePlayer struct {
 	ID            string `json:"id"`
 	TeamID        string `json:"teamId"`
@@ -195,6 +206,37 @@ func (g *gameSession) submitMove(playerID string, payload json.RawMessage) (*gam
 	}
 
 	return receipt, g.hasAllMoves(), nil
+}
+
+func (g *gameSession) cancelMove(playerID string) (*gameMoveReceipt, error) {
+	if g == nil {
+		return nil, fmt.Errorf("game has not started")
+	}
+	if g.Phase == gamePhaseFinished {
+		return nil, fmt.Errorf("game is already finished")
+	}
+
+	currentPlayer := g.Players[playerID]
+	if currentPlayer == nil {
+		return nil, fmt.Errorf("player is not in this game")
+	}
+	if !currentPlayer.Alive {
+		return nil, fmt.Errorf("eliminated players cannot cancel moves")
+	}
+	if _, exists := g.PendingMoves[playerID]; !exists {
+		return nil, fmt.Errorf("player has not moved this round")
+	}
+	if g.hasAllMoves() {
+		return nil, fmt.Errorf("all players have moved; round is resolving")
+	}
+
+	delete(g.PendingMoves, playerID)
+	return &gameMoveReceipt{
+		PlayerID:         playerID,
+		Round:            g.Round,
+		SubmittedPlayers: g.submittedPlayers(),
+		NeededPlayers:    g.alivePlayers(),
+	}, nil
 }
 
 func (g *gameSession) validateMove(currentPlayer *gamePlayer, move submittedMove) error {

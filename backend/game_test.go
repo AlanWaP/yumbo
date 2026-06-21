@@ -123,3 +123,38 @@ func TestTeamModeAssignsTeamsAndRejectsTeamAttacks(t *testing.T) {
 		t.Fatal("expected attacking a teammate to fail")
 	}
 }
+
+func TestGameSessionCancelMove(t *testing.T) {
+	session := newGameSession("room_one", "rps", []string{"player_one", "player_two"}, gameModeFreeForAll, 2)
+
+	submitTestMove(t, session, "player_one", moveTypeGainPower, "")
+	if len(session.PendingMoves) != 1 {
+		t.Fatalf("expected one pending move, got %d", len(session.PendingMoves))
+	}
+
+	receipt, err := session.cancelMove("player_one")
+	if err != nil {
+		t.Fatalf("cancel move failed: %v", err)
+	}
+	if len(session.PendingMoves) != 0 {
+		t.Fatalf("expected pending moves to clear, got %d", len(session.PendingMoves))
+	}
+	if len(receipt.SubmittedPlayers) != 0 {
+		t.Fatalf("expected no submitted players after cancel, got %v", receipt.SubmittedPlayers)
+	}
+
+	if _, err := session.cancelMove("player_one"); err == nil {
+		t.Fatal("expected cancelling again to fail")
+	}
+}
+
+func TestGameSessionRejectsCancelAfterAllPlayersMove(t *testing.T) {
+	session := newGameSession("room_one", "rps", []string{"player_one", "player_two"}, gameModeFreeForAll, 2)
+
+	submitTestMove(t, session, "player_one", moveTypeGainPower, "")
+	submitTestMove(t, session, "player_two", moveTypeDefend, "")
+
+	if _, err := session.cancelMove("player_one"); err == nil {
+		t.Fatal("expected cancel to fail once all players have moved")
+	}
+}

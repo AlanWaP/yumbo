@@ -20,6 +20,8 @@ const gameFrame = document.querySelector("#game-frame");
 const { t } = window.yumboI18n;
 
 const gameTypes = new Set(["power_defense_wave"]);
+const PLAYER_ID_STORAGE_KEY = "yumboPlayerId";
+const playerIdPattern = /^player_[0-9a-f]{8}$/;
 
 const urlParams = new URLSearchParams(window.location.search);
 const savedServerUrl = localStorage.getItem("yumboServerUrl");
@@ -47,6 +49,50 @@ let submittedRound;
 let submittedMove;
 let selectedTargetId;
 let currentStatus = { key: "status.enterBackend" };
+let activeServerUrl;
+let intentionalClose = false;
+let reconnectTimer;
+let reconnectAttempt = 0;
+let pendingPageReload = false;
+let pageUnloading = false;
+
+if (window.navigation) {
+  navigation.addEventListener("navigate", (event) => {
+    if (event.navigationType === "reload") {
+      pendingPageReload = true;
+    }
+  });
+}
+
+window.addEventListener("keydown", (event) => {
+  if (event.key === "F5") {
+    pendingPageReload = true;
+  }
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "r") {
+    pendingPageReload = true;
+  }
+});
+
+window.addEventListener("pagehide", () => {
+  pageUnloading = true;
+
+  if (pendingPageReload) {
+    sessionStorage.setItem("yumboReloadIntent", "1");
+    sendIfConnected({ type: "refresh_pending" });
+    return;
+  }
+
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    intentionalClose = true;
+    sendIfConnected({ type: "leave_session" });
+  }
+});
+
+const reloadIntent = sessionStorage.getItem("yumboReloadIntent") === "1";
+const navigationEntry = performance.getEntriesByType("navigation")[0];
+if (reloadIntent && navigationEntry?.type === "reload") {
+  sessionStorage.removeItem("yumboReloadIntent");
+}
 
 const waitingRoom = window.createWaitingRoom({
   panel: lobbyPanel,
@@ -71,6 +117,7 @@ const gameScreen = window.createGameScreen({
   },
   getCurrentGameState: () => currentGameState,
   sendGameMove,
+  cancelGameMove,
   formatPlayerIds,
   t,
 });
@@ -156,17 +203,23 @@ function connect(rawUrl) {
     return;
   }
 
+  clearReconnectTimer();
+
   if (socket && socket.readyState === WebSocket.OPEN) {
+    intentionalClose = true;
     socket.close();
   }
 
+  intentionalClose = false;
+  activeServerUrl = rawUrl;
   setStatus("status.connecting");
   connectButton.disabled = true;
   localStorage.setItem("yumboServerUrl", rawUrl);
 
-  socket = new WebSocket(rawUrl);
+  socket = new WebSocket(buildWebSocketUrl(rawUrl));
 
   socket.addEventListener("open", () => {
+    reconnectAttempt = 0;
     connectionPanel.hidden = true;
     showWaitingRoom();
     connectButton.disabled = false;
@@ -178,33 +231,96 @@ function connect(rawUrl) {
   });
 
   socket.addEventListener("close", () => {
-    connectionPanel.hidden = false;
-    lobbyPanel.hidden = true;
     connectButton.disabled = false;
-    joinQueueButton.hidden = false;
-    leaveQueueButton.hidden = true;
-    leaveRoomButton.hidden = true;
-    playerId = undefined;
-    roomId = undefined;
-    gameType = undefined;
-    gameMode = undefined;
-    playerCount = undefined;
-    isQueued = false;
-    lobbyGames = [];
-    currentGameState = undefined;
-    submittedRound = undefined;
-    submittedMove = undefined;
-    selectedTargetId = undefined;
-    updateLabels();
-    renderExistingGames();
+
+    if (pageUnloading) {
+      return;
+    }
+
+    if (intentionalClose) {
+      resetSessionState();
+      setStatus("status.disconnected");
+      return;
+    }
+
+    if (activeServerUrl) {
+      scheduleReconnect();
+      return;
+    }
+
+    resetSessionState();
     setStatus("status.disconnected");
-    hideGameSurfaces();
   });
 
   socket.addEventListener("error", () => {
     setStatus("status.connectionFailed");
     connectButton.disabled = false;
   });
+}
+
+function buildWebSocketUrl(rawUrl) {
+  const url = new URL(rawUrl);
+  url.searchParams.set("playerId", getOrCreatePlayerId());
+  return url.toString();
+}
+
+function getOrCreatePlayerId() {
+  let storedId = sessionStorage.getItem(PLAYER_ID_STORAGE_KEY);
+  if (!playerIdPattern.test(storedId)) {
+    const bytes = crypto.getRandomValues(new Uint8Array(4));
+    storedId = `player_${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+    sessionStorage.setItem(PLAYER_ID_STORAGE_KEY, storedId);
+  }
+  return storedId;
+}
+
+function storePlayerId(nextPlayerId) {
+  if (playerIdPattern.test(nextPlayerId)) {
+    sessionStorage.setItem(PLAYER_ID_STORAGE_KEY, nextPlayerId);
+  }
+}
+
+function clearReconnectTimer() {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = undefined;
+  }
+}
+
+function scheduleReconnect() {
+  if (!activeServerUrl || intentionalClose) {
+    return;
+  }
+
+  reconnectAttempt += 1;
+  const delay = Math.min(1000 * 2 ** (reconnectAttempt - 1), 30000);
+  setStatus("status.reconnecting", { attempt: reconnectAttempt, seconds: Math.ceil(delay / 1000) });
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = undefined;
+    connect(activeServerUrl);
+  }, delay);
+}
+
+function resetSessionState() {
+  connectionPanel.hidden = false;
+  lobbyPanel.hidden = true;
+  joinQueueButton.hidden = false;
+  leaveQueueButton.hidden = true;
+  leaveRoomButton.hidden = true;
+  playerId = undefined;
+  roomId = undefined;
+  gameType = undefined;
+  gameMode = undefined;
+  playerCount = undefined;
+  isQueued = false;
+  lobbyGames = [];
+  currentGameState = undefined;
+  submittedRound = undefined;
+  submittedMove = undefined;
+  selectedTargetId = undefined;
+  updateLabels();
+  renderExistingGames();
+  hideGameSurfaces();
 }
 
 function handleServerMessage(rawMessage) {
@@ -218,6 +334,7 @@ function handleServerMessage(rawMessage) {
 
   if (message.type === "connected") {
     playerId = message.playerId;
+    storePlayerId(playerId);
     updateLabels();
     return;
   }
@@ -229,43 +346,12 @@ function handleServerMessage(rawMessage) {
   }
 
   if (message.type === "queued" || message.type === "already_queued") {
-    playerId = message.playerId || playerId;
-    gameType = message.gameType;
-    gameMode = message.gameMode;
-    playerCount = message.playerCount;
-    roomId = undefined;
-    isQueued = true;
-    currentGameState = undefined;
-    submittedRound = undefined;
-    submittedMove = undefined;
-    selectedTargetId = undefined;
-    updateLabels();
-    setStatus("status.waitingPlayers");
-    showWaitingRoom();
-    joinQueueButton.hidden = true;
-    leaveQueueButton.hidden = false;
-    leaveRoomButton.hidden = true;
+    applyQueuedState(message);
     return;
   }
 
   if (message.type === "room_created") {
-    playerId = message.playerId || playerId;
-    gameType = message.gameType;
-    gameMode = message.gameMode;
-    playerCount = message.playerCount;
-    roomId = message.roomId;
-    isQueued = false;
-    updateLabels();
-    setStatus("status.roomCreated");
-    currentGameState = message.payload;
-    submittedRound = undefined;
-    submittedMove = undefined;
-    selectedTargetId = undefined;
-    showGameFrame();
-    renderGameState(currentGameState);
-    joinQueueButton.hidden = false;
-    leaveQueueButton.hidden = true;
-    leaveRoomButton.hidden = false;
+    applyRoomState(message);
     return;
   }
 
@@ -307,6 +393,16 @@ function handleServerMessage(rawMessage) {
     return;
   }
 
+  if (message.type === "peer_disconnected") {
+    setStatus("status.peerDisconnected", { player: message.playerId || t("labels.playerUnassigned") });
+    return;
+  }
+
+  if (message.type === "peer_reconnected") {
+    setStatus("status.peerReconnected", { player: message.playerId || t("labels.playerUnassigned") });
+    return;
+  }
+
   if (message.type === "room_message") {
     setStatus("status.roomMessage");
     return;
@@ -315,6 +411,15 @@ function handleServerMessage(rawMessage) {
   if (message.type === "game_move_accepted") {
     submittedRound = message.payload?.round;
     setStatus("status.moveSubmitted");
+    renderGameState(currentGameState);
+    return;
+  }
+
+  if (message.type === "game_move_cancelled") {
+    submittedRound = undefined;
+    submittedMove = undefined;
+    selectedTargetId = undefined;
+    setStatus("status.moveCancelled");
     renderGameState(currentGameState);
     return;
   }
@@ -339,6 +444,47 @@ function handleServerMessage(rawMessage) {
   if (message.type === "error") {
     setRawStatus(message.message || t("status.serverError"));
   }
+}
+
+function applyQueuedState(message) {
+  playerId = message.playerId || playerId;
+  storePlayerId(playerId);
+  gameType = message.gameType;
+  gameMode = message.gameMode;
+  playerCount = message.playerCount;
+  roomId = undefined;
+  isQueued = true;
+  currentGameState = undefined;
+  submittedRound = undefined;
+  submittedMove = undefined;
+  selectedTargetId = undefined;
+  updateLabels();
+  setStatus(message.type === "already_queued" && message.restored ? "status.sessionRestoredQueue" : "status.waitingPlayers");
+  showWaitingRoom();
+  joinQueueButton.hidden = true;
+  leaveQueueButton.hidden = false;
+  leaveRoomButton.hidden = true;
+}
+
+function applyRoomState(message) {
+  playerId = message.playerId || playerId;
+  storePlayerId(playerId);
+  gameType = message.gameType;
+  gameMode = message.gameMode;
+  playerCount = message.playerCount;
+  roomId = message.roomId;
+  isQueued = false;
+  updateLabels();
+  setStatus(message.restored ? "status.sessionRestoredRoom" : "status.roomCreated");
+  currentGameState = message.payload;
+  submittedRound = undefined;
+  submittedMove = undefined;
+  selectedTargetId = undefined;
+  showGameFrame();
+  renderGameState(currentGameState);
+  joinQueueButton.hidden = false;
+  leaveQueueButton.hidden = true;
+  leaveRoomButton.hidden = false;
 }
 
 function joinQueue(gameToJoin) {
@@ -403,6 +549,10 @@ function send(message) {
   }
 }
 
+function sendIfConnected(message) {
+  send(message);
+}
+
 function setStatus(key, values = {}) {
   currentStatus = { key, values };
   refreshStatus();
@@ -448,6 +598,10 @@ function sendGameMove(moveType, targetId) {
       targetId,
     },
   });
+}
+
+function cancelGameMove() {
+  send({ type: "cancel_move" });
 }
 
 function setGameStatus(messageType, gameState) {

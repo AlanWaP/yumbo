@@ -431,7 +431,7 @@ func TestGameMoveAcceptedAndRoundResolved(t *testing.T) {
 
 func TestRemovePlayerCleansQueueAndNotifiesRoomPeer(t *testing.T) {
 	gameHub := newHub()
-	queuedPlayer, queuedConn := addTestPlayer(gameHub, "queued_player")
+	queuedPlayer, _ := addTestPlayer(gameHub, "queued_player")
 	playerOne, playerOneConn := addTestPlayer(gameHub, "player_one")
 	playerTwo, playerTwoConn := addTestPlayer(gameHub, "player_two")
 
@@ -439,9 +439,6 @@ func TestRemovePlayerCleansQueueAndNotifiesRoomPeer(t *testing.T) {
 	gameHub.removePlayer(queuedPlayer)
 	if len(gameHub.queues["cards:3"]) != 0 {
 		t.Fatalf("expected disconnected queued player to be removed, got %v", gameHub.queues["cards:3"])
-	}
-	if !queuedConn.closed {
-		t.Fatal("expected disconnected queued player's connection to close")
 	}
 
 	gameHub.handleMessage(playerOne, clientMessage{Type: "join_queue", GameType: "rps"})
@@ -460,7 +457,192 @@ func TestRemovePlayerCleansQueueAndNotifiesRoomPeer(t *testing.T) {
 	if playerTwo.roomID != "" || playerTwo.gameType != "" {
 		t.Fatalf("expected remaining peer room state to clear, got room %q game %q", playerTwo.roomID, playerTwo.gameType)
 	}
-	if playerTwo.playerCount != 0 || playerTwo.queueKey != "" {
-		t.Fatalf("expected remaining peer queue state to clear, got count %d key %q", playerTwo.playerCount, playerTwo.queueKey)
+}
+
+func TestDetachPlayerPreservesQueueUntilExpiry(t *testing.T) {
+	gameHub := newHub()
+	queuedPlayer, queuedConn := addTestPlayer(gameHub, "queued_player")
+
+	gameHub.handleMessage(queuedPlayer, clientMessage{Type: "join_queue", GameType: "cards", PlayerCount: 3})
+	queuedPlayer.refreshDisconnect = true
+	gameHub.detachPlayer(queuedPlayer, queuedConn)
+
+	if len(gameHub.queues["cards:3"]) != 1 {
+		t.Fatalf("expected queued player to remain reserved, got %v", gameHub.queues["cards:3"])
+	}
+	if gameHub.players["queued_player"] == nil {
+		t.Fatal("expected disconnected player record to remain")
+	}
+	if gameHub.players["queued_player"].conn != nil {
+		t.Fatal("expected player connection to be detached")
+	}
+}
+
+func TestDetachPlayerPreservesRoomUntilExpiry(t *testing.T) {
+	gameHub := newHub()
+	playerOne, playerOneConn := addTestPlayer(gameHub, "player_11111111")
+	playerTwo, playerTwoConn := addTestPlayer(gameHub, "player_22222222")
+
+	gameHub.handleMessage(playerOne, clientMessage{Type: "join_queue", GameType: "rps"})
+	gameHub.handleMessage(playerTwo, clientMessage{Type: "join_queue", GameType: "rps"})
+	playerOneConn.messages = nil
+	playerTwoConn.messages = nil
+
+	playerOne.refreshDisconnect = true
+	gameHub.detachPlayer(playerOne, playerOneConn)
+
+	if len(gameHub.rooms) != 1 {
+		t.Fatalf("expected room to remain while player reconnects, got %d rooms", len(gameHub.rooms))
+	}
+	if playerOne.roomID == "" {
+		t.Fatal("expected disconnected player to remain assigned to room")
+	}
+	if got := lastMessage(t, playerTwoConn).Type; got != "peer_disconnected" {
+		t.Fatalf("expected peer_disconnected, got %q", got)
+	}
+	if playerTwo.roomID == "" {
+		t.Fatal("expected remaining peer to stay in room")
+	}
+}
+
+func TestReconnectRestoresQueueSession(t *testing.T) {
+	gameHub := newHub()
+	playerOne, playerOneConn := addTestPlayer(gameHub, "player_a1b2c3d4")
+
+	gameHub.handleMessage(playerOne, clientMessage{Type: "join_queue", GameType: "rps"})
+	gameHub.markRefreshPending(playerOne)
+	gameHub.detachPlayer(playerOne, playerOneConn)
+
+	reconnectConn := &recordingConn{}
+	reconnectedPlayer, reconnected := gameHub.registerPlayer(reconnectConn, "player_a1b2c3d4")
+	if !reconnected {
+		t.Fatal("expected reconnecting player to reuse existing session")
+	}
+	if reconnectedPlayer.id != "player_a1b2c3d4" {
+		t.Fatalf("expected same player id, got %q", reconnectedPlayer.id)
+	}
+	gameHub.sendSessionRestore(reconnectedPlayer)
+
+	message := lastMessage(t, reconnectConn)
+	if message.Type != "already_queued" || !message.Restored {
+		t.Fatalf("expected restored queue session, got %#v", message)
+	}
+	if message.GameType != "rps" {
+		t.Fatalf("expected rps queue to restore, got %q", message.GameType)
+	}
+}
+
+func TestReconnectRestoresRoomSession(t *testing.T) {
+	gameHub := newHub()
+	playerOne, playerOneConn := addTestPlayer(gameHub, "player_11111111")
+	playerTwo, playerTwoConn := addTestPlayer(gameHub, "player_22222222")
+
+	gameHub.handleMessage(playerOne, clientMessage{Type: "join_queue", GameType: "rps"})
+	gameHub.handleMessage(playerTwo, clientMessage{Type: "join_queue", GameType: "rps"})
+	playerOneConn.messages = nil
+	playerTwoConn.messages = nil
+
+	roomID := playerOne.roomID
+	gameHub.markRefreshPending(playerOne)
+	gameHub.detachPlayer(playerOne, playerOneConn)
+
+	reconnectConn := &recordingConn{}
+	reconnectedPlayer, reconnected := gameHub.registerPlayer(reconnectConn, "player_11111111")
+	if !reconnected {
+		t.Fatal("expected reconnecting player to reuse existing session")
+	}
+	gameHub.sendSessionRestore(reconnectedPlayer)
+
+	message := lastMessage(t, reconnectConn)
+	if message.Type != "room_created" || !message.Restored {
+		t.Fatalf("expected restored room session, got %#v", message)
+	}
+	if message.RoomID != roomID {
+		t.Fatalf("expected room %q to restore, got %q", roomID, message.RoomID)
+	}
+	if got := lastMessage(t, playerTwoConn).Type; got != "peer_reconnected" {
+		t.Fatalf("expected peer_reconnected, got %q", got)
+	}
+}
+
+func TestDetachWithoutRefreshLeavesImmediately(t *testing.T) {
+	gameHub := newHub()
+	playerOne, playerOneConn := addTestPlayer(gameHub, "player_11111111")
+	playerTwo, playerTwoConn := addTestPlayer(gameHub, "player_22222222")
+
+	gameHub.handleMessage(playerOne, clientMessage{Type: "join_queue", GameType: "rps"})
+	gameHub.handleMessage(playerTwo, clientMessage{Type: "join_queue", GameType: "rps"})
+	playerOneConn.messages = nil
+	playerTwoConn.messages = nil
+
+	gameHub.detachPlayer(playerOne, playerOneConn)
+
+	if len(gameHub.rooms) != 0 {
+		t.Fatalf("expected room to be removed on window close, got %d rooms", len(gameHub.rooms))
+	}
+	if gameHub.players["player_11111111"] != nil {
+		t.Fatal("expected disconnected player to be removed")
+	}
+	if got := lastMessage(t, playerTwoConn).Type; got != "peer_left" {
+		t.Fatalf("expected peer_left, got %q", got)
+	}
+}
+
+func TestLeaveSessionRemovesPlayerImmediately(t *testing.T) {
+	gameHub := newHub()
+	playerOne, playerOneConn := addTestPlayer(gameHub, "player_11111111")
+	playerTwo, _ := addTestPlayer(gameHub, "player_22222222")
+
+	gameHub.handleMessage(playerOne, clientMessage{Type: "join_queue", GameType: "cards", PlayerCount: 3})
+	gameHub.leaveSession(playerOne)
+
+	if len(gameHub.queues["cards:3"]) != 0 {
+		t.Fatalf("expected queue to clear after leave session, got %v", gameHub.queues["cards:3"])
+	}
+	if gameHub.players["player_11111111"] != nil {
+		t.Fatal("expected player to be removed")
+	}
+	if !playerOneConn.closed {
+		t.Fatal("expected player connection to close")
+	}
+}
+
+func TestCancelMoveBroadcastsUpdatedGameState(t *testing.T) {
+	gameHub := newHub()
+	playerOne, playerOneConn := addTestPlayer(gameHub, "player_11111111")
+	playerTwo, playerTwoConn := addTestPlayer(gameHub, "player_22222222")
+
+	gameHub.handleMessage(playerOne, clientMessage{Type: "join_queue", GameType: "rps"})
+	gameHub.handleMessage(playerTwo, clientMessage{Type: "join_queue", GameType: "rps"})
+	playerOneConn.messages = nil
+	playerTwoConn.messages = nil
+
+	gameHub.handleMessage(playerOne, clientMessage{
+		Type:    "game_move",
+		Payload: json.RawMessage(`{"moveType":"gain_power"}`),
+	})
+	playerOneConn.messages = nil
+	playerTwoConn.messages = nil
+
+	gameHub.handleMessage(playerOne, clientMessage{Type: "cancel_move"})
+
+	if got := messageOfType(t, playerOneConn, "game_move_cancelled").Type; got != "game_move_cancelled" {
+		t.Fatalf("expected game_move_cancelled, got %q", got)
+	}
+	if got := lastMessage(t, playerTwoConn).Type; got != "game_state" {
+		t.Fatalf("expected game_state broadcast, got %q", got)
+	}
+}
+
+func TestResolvePlayerIDAcceptsClientFormat(t *testing.T) {
+	if got := resolvePlayerID("player_a1b2c3d4"); got != "player_a1b2c3d4" {
+		t.Fatalf("expected client id to be accepted, got %q", got)
+	}
+	generated := resolvePlayerID("invalid")
+	if generated == "invalid" {
+		t.Fatal("expected invalid id to be replaced")
+	}
+	if !playerIDPattern.MatchString(generated) {
+		t.Fatalf("expected generated id to match pattern, got %q", generated)
 	}
 }
