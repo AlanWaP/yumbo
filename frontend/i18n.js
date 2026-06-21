@@ -129,7 +129,7 @@
       "game.cancelMove": "Cancel move",
       "game.targeting": "{move} targeting {target}",
       "game.chooseTargetFor": "Choose a target for {move}.",
-      "game.chooseTargetHint": "Choose Wave or Air Cannon first, then click a target player.",
+      "game.chooseTargetHint": "Choose Wave or Air Cannon, then click a target player.",
       "game.attackTarget": "Attack target",
       "game.powerButton": "Power (+{amount})",
       "game.costPowerButton": "{move} ({cost} power)",

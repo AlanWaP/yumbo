@@ -7,7 +7,6 @@
     getSelectedTargetId,
     setSelectedTargetId,
     getCurrentGameState,
-    getLastMoveReceipt,
     getMoveCancelAvailable,
     sendGameMove,
     cancelGameMove,
@@ -17,7 +16,6 @@
     let currentGameId;
     let activeInfoTab = "log";
     let pendingTargetMoveType;
-    let pendingImmediateMoveType;
     const gameLogEntries = [];
     const loggedRoundKeys = new Set();
     const loggedResultKeys = new Set();
@@ -60,7 +58,6 @@
       }
       if (!canSubmitMove(gameState)) {
         pendingTargetMoveType = undefined;
-        pendingImmediateMoveType = undefined;
       }
 
       const board = document.createElement("section");
@@ -117,7 +114,6 @@
       if (gameState.id !== currentGameId) {
         currentGameId = gameState.id;
         pendingTargetMoveType = undefined;
-        pendingImmediateMoveType = undefined;
         gameLogEntries.length = 0;
         loggedRoundKeys.clear();
         loggedResultKeys.clear();
@@ -424,64 +420,21 @@
         return panel;
       }
 
-      helperText.textContent = formatStagingHelper(gameState);
+      helperText.textContent = formatActionHelper(gameState);
       panel.append(
         helperText,
         gameState.gameType === "power_defense_wave"
           ? createPowerDefenseWaveControls(gameState)
-          : createMoveControls(gameState),
-        createStagedMoveActions(gameState)
+          : createMoveControls(gameState)
       );
       return panel;
     }
 
-    function formatStagingHelper(gameState) {
-      const selectedTargetId = getSelectedTargetId();
-      if (pendingImmediateMoveType) {
-        return t("game.selectedMove", { move: formatMoveName(pendingImmediateMoveType) });
-      }
-      if (pendingTargetMoveType && selectedTargetId) {
-        return t("game.readyToTarget", {
-          move: formatMoveName(pendingTargetMoveType),
-          target: selectedTargetId,
-        });
-      }
+    function formatActionHelper(gameState) {
       if (pendingTargetMoveType) {
         return t("game.chooseTargetFor", { move: formatMoveName(pendingTargetMoveType) });
       }
       return t("game.pickMove");
-    }
-
-    function createStagedMoveActions(gameState) {
-      if (!hasLocalStaging()) {
-        return document.createDocumentFragment();
-      }
-
-      const actions = document.createElement("div");
-      actions.className = "action-buttons";
-
-      if (canConfirmStagedMove()) {
-        const confirmButton = document.createElement("button");
-        confirmButton.type = "button";
-        confirmButton.className = "action-confirm-button";
-        confirmButton.textContent = t("game.confirmMove");
-        confirmButton.addEventListener("click", () => confirmStagedMove());
-        actions.append(confirmButton);
-      }
-
-      actions.append(createCancelButton());
-      return actions;
-    }
-
-    function createSubmittedMoveActions(gameState) {
-      if (!shouldOfferMoveCancel(gameState)) {
-        return document.createDocumentFragment();
-      }
-
-      const actions = document.createElement("div");
-      actions.className = "action-buttons";
-      actions.append(createCancelButton());
-      return actions;
     }
 
     function isWaitingAfterSubmit(gameState) {
@@ -499,25 +452,6 @@
       );
     }
 
-    function allPlayersHaveSubmitted(gameState) {
-      const alivePlayers = Object.values(gameState?.players || {}).filter((player) => player.alive);
-      const submittedPlayers = gameState?.submittedPlayers;
-      if (Array.isArray(submittedPlayers) && alivePlayers.length > 0) {
-        return submittedPlayers.length >= alivePlayers.length;
-      }
-
-      const receipt = getLastMoveReceipt();
-      if (
-        Array.isArray(receipt?.submittedPlayers) &&
-        Array.isArray(receipt?.neededPlayers) &&
-        receipt.neededPlayers.length > 0
-      ) {
-        return receipt.submittedPlayers.length >= receipt.neededPlayers.length;
-      }
-
-      return false;
-    }
-
     function roundNumber(value) {
       const parsed = Number(value);
       return Number.isFinite(parsed) ? parsed : undefined;
@@ -529,18 +463,6 @@
       return submittedRound !== undefined && submittedRound === currentRound;
     }
 
-    function shouldOfferMoveCancel(gameState) {
-      if (gameState?.phase !== "waiting_for_moves" || !isWaitingAfterSubmit(gameState)) {
-        return false;
-      }
-
-      return !allPlayersHaveSubmitted(gameState);
-    }
-
-    function canCancelSubmittedMove(gameState) {
-      return shouldOfferMoveCancel(gameState);
-    }
-
     function createCancelButton() {
       const cancelButton = document.createElement("button");
       cancelButton.type = "button";
@@ -550,43 +472,10 @@
       return cancelButton;
     }
 
-    function hasLocalStaging() {
-      return Boolean(pendingImmediateMoveType || pendingTargetMoveType || getSelectedTargetId());
-    }
-
-    function canConfirmStagedMove() {
-      if (pendingImmediateMoveType) {
-        return true;
-      }
-      return Boolean(pendingTargetMoveType && getSelectedTargetId());
-    }
-
-    function confirmStagedMove() {
-      if (pendingImmediateMoveType) {
-        const moveType = pendingImmediateMoveType;
-        clearLocalStaging();
-        sendGameMove(moveType);
-        return;
-      }
-
-      if (pendingTargetMoveType && getSelectedTargetId()) {
-        const moveType = pendingTargetMoveType;
-        const targetId = getSelectedTargetId();
-        clearLocalStaging();
-        sendGameMove(moveType, targetId);
-      }
-    }
-
     function cancelSelection() {
       const gameState = getCurrentGameState();
       if (isWaitingAfterSubmit(gameState)) {
         cancelGameMove();
-        return;
-      }
-
-      if (getSelectedTargetId()) {
-        setSelectedTargetId(undefined);
-        renderGameState(getCurrentGameState());
         return;
       }
 
@@ -596,26 +485,17 @@
 
     function clearLocalStaging() {
       pendingTargetMoveType = undefined;
-      pendingImmediateMoveType = undefined;
       setSelectedTargetId(undefined);
     }
 
-    function stageImmediateMove(moveType) {
-      pendingImmediateMoveType = moveType;
-      pendingTargetMoveType = undefined;
-      setSelectedTargetId(undefined);
-      renderGameState(getCurrentGameState());
-    }
-
-    function stageTargetedMove(moveType) {
+    function armTargetedMove(moveType) {
       pendingTargetMoveType = moveType;
-      pendingImmediateMoveType = undefined;
       setSelectedTargetId(undefined);
       renderGameState(getCurrentGameState());
     }
 
-    function isStagedMove(moveType) {
-      return pendingImmediateMoveType === moveType || pendingTargetMoveType === moveType;
+    function isArmedMove(moveType) {
+      return pendingTargetMoveType === moveType;
     }
 
     function createMoveButton(label, moveType, options = {}) {
@@ -623,14 +503,15 @@
       button.type = "button";
       button.textContent = label;
       button.disabled = Boolean(options.disabled);
-      if (isStagedMove(moveType)) {
+      if (isArmedMove(moveType)) {
         button.classList.add("selected-move");
       }
       button.addEventListener("click", () => {
         if (options.targeted) {
-          stageTargetedMove(moveType);
+          armTargetedMove(moveType);
         } else {
-          stageImmediateMove(moveType);
+          clearLocalStaging();
+          sendGameMove(moveType);
         }
       });
       return button;
@@ -656,12 +537,7 @@
       const targetHint = document.createElement("p");
       targetHint.className = "action-helper";
       targetHint.textContent = pendingTargetMoveType
-        ? getSelectedTargetId()
-          ? t("game.readyToTarget", {
-              move: formatMoveName(pendingTargetMoveType),
-              target: getSelectedTargetId(),
-            })
-          : t("game.chooseTargetFor", { move: formatMoveName(pendingTargetMoveType) })
+        ? t("game.chooseTargetFor", { move: formatMoveName(pendingTargetMoveType) })
         : t("game.chooseTargetHint");
 
       const powerButton = createMoveButton(
@@ -717,8 +593,9 @@
       if (!pendingTargetMoveType) {
         return;
       }
-      setSelectedTargetId(targetId);
-      renderGameState(getCurrentGameState());
+      const moveType = pendingTargetMoveType;
+      clearLocalStaging();
+      sendGameMove(moveType, targetId);
     }
 
     function createMoveControls(gameState) {
@@ -748,14 +625,8 @@
       });
       attackButton.disabled =
         targets.length === 0 || currentPlayer(gameState).power < gameState.rules.attackCost;
-      if (isStagedMove("attack")) {
-        attackButton.classList.add("selected-move");
-      }
       attackButton.addEventListener("click", () => {
-        pendingTargetMoveType = "attack";
-        pendingImmediateMoveType = undefined;
-        setSelectedTargetId(targetSelect.value);
-        renderGameState(getCurrentGameState());
+        sendGameMove("attack", targetSelect.value);
       });
       attackGroup.append(attackLabel, targetSelect, attackButton);
 

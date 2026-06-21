@@ -119,7 +119,6 @@ const gameScreen = window.createGameScreen({
     selectedTargetId = targetId;
   },
   getCurrentGameState: () => currentGameState,
-  getLastMoveReceipt: () => lastMoveReceipt,
   getMoveCancelAvailable: () => moveCancelAvailable,
   sendGameMove,
   cancelGameMove,
