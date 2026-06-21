@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="frontend/" />
+    <title>Yumbo Multiplayer</title>
+    <link rel="stylesheet" href="style.css?v=instant-move-4" />
+  </head>
+  <body>
+    <a
+      class="github-link"
+      href="https://github.com/AlanWaP/yumbo"
+      aria-label="Open GitHub repository"
+      data-i18n-aria-label="aria.github"
+    >
+      <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
+        <path
+          d="M12 0.5C5.65 0.5 0.5 5.65 0.5 12c0 5.09 3.29 9.4 7.86 10.92 0.58 0.1 0.79-0.25 0.79-0.55v-2.02c-3.2 0.7-3.88-1.36-3.88-1.36-0.52-1.33-1.28-1.68-1.28-1.68-1.05-0.72 0.08-0.7 0.08-0.7 1.16 0.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36 0.96 0.1-0.75 0.4-1.26 0.73-1.55-2.55-0.29-5.23-1.28-5.23-5.68 0-1.25 0.45-2.28 1.18-3.08-0.12-0.29-0.51-1.46 0.11-3.04 0 0 0.97-0.31 3.16 1.18 0.92-0.26 1.9-0.38 2.88-0.39 0.98 0.01 1.96 0.13 2.88 0.39 2.19-1.49 3.15-1.18 3.15-1.18 0.63 1.58 0.23 2.75 0.11 3.04 0.74 0.8 1.18 1.83 1.18 3.08 0 4.42-2.69 5.39-5.25 5.67 0.41 0.36 0.78 1.06 0.78 2.14v3.17c0 0.31 0.21 0.66 0.8 0.55A11.52 11.52 0 0 0 23.5 12C23.5 5.65 18.35 0.5 12 0.5Z"
+        />
+      </svg>
+    </a>
+
+    <main class="app">
+      <section class="card">
+        <h1>Yumbo</h1>
+        <button id="language-toggle-button" class="language-toggle" type="button">
+          EN / 中
+        </button>
+        <p id="status" class="status" data-i18n="status.enterBackend">Enter your backend URL to begin.</p>
+
+        <section id="connection-panel" class="panel">
+          <label for="server-url" data-i18n="connection.backendUrl">Backend WebSocket URL</label>
+          <div class="input-row">
+            <input
+              id="server-url"
+              type="url"
+              placeholder="ws://localhost:3000 or wss://your-tunnel-url"
+              data-i18n-placeholder="connection.placeholder"
+              autocomplete="off"
+            />
+            <button id="connect-button" type="button" data-i18n="connection.connect">Connect</button>
+          </div>
+          <p class="hint" data-i18n="connection.hint">
+            Use <code>ws://localhost:3000</code> locally. Use a <code>wss://</code>
+            tunnel URL when this page is hosted on GitHub Pages.
+          </p>
+        </section>
+
+        <section class="player-panel" aria-label="Connection details" data-i18n-aria-label="labels.connectionDetails">
+          <span id="player-label">Player: not assigned</span>
+          <span id="game-label">Game: none</span>
+          <span id="room-label">Room: none</span>
+          <span id="session-status-label">Status: Not connected</span>
+        </section>
+
+        <section id="lobby-panel" class="panel" hidden>
+          <h2 data-i18n="lobby.title">Waiting room</h2>
+          <div class="input-row">
+            <label class="field">
+              <span data-i18n="lobby.gameType">Game type</span>
+              <select id="game-type">
+                <option value="power_defense_wave" data-i18n="gameType.power_defense_wave">Power, Defense and Wave</option>
+              </select>
+            </label>
+            <label class="field game-mode-field">
+              <span data-i18n="lobby.mode">Mode</span>
+              <select id="game-mode">
+                <option value="free_for_all" data-i18n="gameMode.free_for_all">Free for all</option>
+                <option value="team" data-i18n="gameMode.team">Team vs team</option>
+              </select>
+            </label>
+            <label class="field player-count-field">
+              <span data-i18n="lobby.playersNeeded">Players needed</span>
+              <select id="player-count" class="player-count-input">
+                <option value="2">2 players</option>
+                <option value="3">3 players</option>
+                <option value="4">4 players</option>
+                <option value="5">5 players</option>
+                <option value="6">6 players</option>
+                <option value="7">7 players</option>
+                <option value="8">8 players</option>
+                <option value="9">9 players</option>
+                <option value="10">10 players</option>
+                <option value="11">11 players</option>
+                <option value="12">12 players</option>
+                <option value="13">13 players</option>
+                <option value="14">14 players</option>
+                <option value="15">15 players</option>
+                <option value="16">16 players</option>
+              </select>
+            </label>
+            <button id="join-queue-button" type="button" data-i18n="lobby.createGame">Create game</button>
+            <button id="leave-queue-button" type="button" data-i18n="lobby.leaveQueue" hidden>Leave queue</button>
+          </div>
+          <p class="hint" data-i18n="lobby.hint">
+            Create a waiting game or join an existing one. The game screen appears
+            only after the match starts.
+          </p>
+          <section class="existing-games" aria-labelledby="existing-games-title">
+            <div class="existing-games-header">
+              <h2 id="existing-games-title" data-i18n="lobby.existingGames">Existing games</h2>
+              <button id="refresh-lobby-button" class="secondary-button" type="button" data-i18n="lobby.refresh">
+                Refresh
+              </button>
+            </div>
+            <div id="existing-games-list" class="game-list">
+              <p class="empty-list" data-i18n="lobby.emptyDisconnected">Connect to see waiting and started games.</p>
+            </div>
+          </section>
+        </section>
+
+        <section id="game-frame" class="game-frame" aria-live="polite" hidden>
+          <h2 data-i18n="game.placeholderTitle">Game Frame</h2>
+          <p data-i18n="game.placeholderDetail">
+            Future game elements will be mounted here. This framework only shows
+            connection, queue, and room state for now.
+          </p>
+        </section>
+
+        <div class="actions">
+          <button id="cancel-move-button" type="button" data-i18n="game.cancelMove" hidden>Cancel move</button>
+          <button id="leave-room-button" type="button" data-i18n="lobby.leaveRoom" hidden>Leave room</button>
+        </div>
+      </section>
+    </main>
+
+    <script src="i18n.js?v=instant-move-4"></script>
+    <script src="waiting-room.js?v=instant-move-4"></script>
+    <script src="game-screen.js?v=instant-move-4"></script>
+    <script src="script.js?v=instant-move-4"></script>
+  </body>
+</html>

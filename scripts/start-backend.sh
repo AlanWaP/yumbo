@@ -83,17 +83,11 @@ if [[ -z "$TUNNEL_URL" ]]; then
 fi
 
 WS_URL="${TUNNEL_URL/https:\/\//wss://}"
-FRONTEND_URL="${TUNNEL_URL%/}/"
 
 echo
 echo "Open this URL to play:"
-echo "${FRONTEND_URL}?server=${WS_URL}"
+echo "${PAGES_URL}?server=${WS_URL}"
 echo
-if [[ -n "$PAGES_URL" ]]; then
-  echo "GitHub Pages URL (when Pages is enabled):"
-  echo "${PAGES_URL}?server=${WS_URL}"
-  echo
-fi
 echo "Backend URL: ws://localhost:${PORT}"
 echo "Tunnel URL:  ${TUNNEL_URL}"
 echo "Press Ctrl+C to stop the backend and tunnel."
