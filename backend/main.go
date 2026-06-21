@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -135,8 +134,12 @@ func handleRequest(gameHub *hub, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("content-type", "text/plain; charset=utf-8")
-	fmt.Fprintln(w, "Yumbo multiplayer backend is running.")
+	frontendDir := os.Getenv("FRONTEND_DIR")
+	if frontendDir == "" {
+		frontendDir = "frontend"
+	}
+
+	http.FileServer(http.Dir(frontendDir)).ServeHTTP(w, r)
 }
 
 func handleWebSocket(gameHub *hub, w http.ResponseWriter, r *http.Request) {

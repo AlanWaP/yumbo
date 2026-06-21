@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 PORT="${1:-${PORT:-3000}}"
-PAGES_URL="${PAGES_URL:-https://alanwap.github.io/yumbo/}"
+PAGES_URL="${PAGES_URL:-https://AlanWaP.github.io/yumbo/}"
 TUNNEL_LOG="$(mktemp "${TMPDIR:-/tmp}/yumbo-cloudflared.XXXXXX.log")"
 BACKEND_PID=""
 TUNNEL_PID=""
@@ -73,11 +73,17 @@ if [[ -z "$TUNNEL_URL" ]]; then
 fi
 
 WS_URL="${TUNNEL_URL/https:\/\//wss://}"
+FRONTEND_URL="${TUNNEL_URL%/}/"
 
 echo
 echo "Open this URL to play:"
-echo "${PAGES_URL}?server=${WS_URL}"
+echo "${FRONTEND_URL}?server=${WS_URL}"
 echo
+if [[ -n "$PAGES_URL" ]]; then
+  echo "GitHub Pages URL (when Pages is enabled):"
+  echo "${PAGES_URL}?server=${WS_URL}"
+  echo
+fi
 echo "Backend URL: ws://localhost:${PORT}"
 echo "Tunnel URL:  ${TUNNEL_URL}"
 echo "Press Ctrl+C to stop the backend and tunnel."
