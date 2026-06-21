@@ -19,7 +19,7 @@ const existingGamesList = document.querySelector("#existing-games-list");
 const gameFrame = document.querySelector("#game-frame");
 const { t } = window.yumboI18n;
 
-const gameTypes = new Set(["power_defense_wave", "rps", "cards", "trivia"]);
+const gameTypes = new Set(["power_defense_wave"]);
 
 const urlParams = new URLSearchParams(window.location.search);
 const savedServerUrl = localStorage.getItem("yumboServerUrl");
@@ -78,7 +78,7 @@ const gameScreen = window.createGameScreen({
 serverUrlInput.value = defaultServerUrl;
 gameTypeInput.value = urlParams.get("game") || savedGameType || "power_defense_wave";
 if (!gameTypes.has(gameTypeInput.value)) {
-  gameTypeInput.value = "rps";
+  gameTypeInput.value = "power_defense_wave";
 }
 gameModeInput.value = urlParams.get("mode") || savedGameMode || "free_for_all";
 if (!["free_for_all", "team"].includes(gameModeInput.value)) {
