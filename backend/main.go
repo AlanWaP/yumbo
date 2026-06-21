@@ -70,6 +70,7 @@ type serverMessage struct {
 	Message     string          `json:"message,omitempty"`
 	Reason      string          `json:"reason,omitempty"`
 	Restored    bool            `json:"restored,omitempty"`
+	SubmittedMove json.RawMessage `json:"submittedMove,omitempty"`
 	Payload     json.RawMessage `json:"payload,omitempty"`
 }
 
@@ -223,14 +224,15 @@ func (h *hub) handleGameMove(currentPlayer *player, payload json.RawMessage) {
 	messages = append(messages, outboundMessage{
 		player: currentPlayer,
 		body: serverMessage{
-			Type:        "game_move_accepted",
-			PlayerID:    currentPlayer.id,
-			RoomID:      currentRoom.id,
-			GameType:    currentRoom.gameType,
-			GameMode:    currentRoom.gameMode,
-			TeamCount:   currentRoom.teamCount,
-			PlayerCount: currentRoom.playerCount,
-			Payload:     marshalPayload(receipt),
+			Type:          "game_move_accepted",
+			PlayerID:      currentPlayer.id,
+			RoomID:        currentRoom.id,
+			GameType:      currentRoom.gameType,
+			GameMode:      currentRoom.gameMode,
+			TeamCount:     currentRoom.teamCount,
+			PlayerCount:   currentRoom.playerCount,
+			SubmittedMove: pendingMoveForPlayer(currentRoom.game, currentPlayer.id),
+			Payload:       marshalPayload(receipt),
 		},
 	})
 

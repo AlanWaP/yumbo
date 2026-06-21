@@ -8,6 +8,7 @@
     setSelectedTargetId,
     getCurrentGameState,
     getLastMoveReceipt,
+    getMoveCancelAvailable,
     sendGameMove,
     cancelGameMove,
     formatPlayerIds,
@@ -403,12 +404,16 @@
       if (!canSubmitMove(gameState)) {
         if (gameState.phase === "finished") {
           helperText.textContent = t("game.over");
-        } else if (hasSubmittedThisRound(gameState)) {
+        } else if (isWaitingAfterSubmit(gameState)) {
           const submittedMove = getSubmittedMove();
           helperText.textContent = submittedMove
             ? t("game.choseMove", { move: formatSubmittedMove(submittedMove) })
             : t("game.alreadyMoved");
-          panel.append(helperText, createSubmittedMoveActions(gameState));
+          panel.append(helperText);
+          const actions = document.createElement("div");
+          actions.className = "action-buttons";
+          actions.append(createCancelButton());
+          panel.append(actions);
         } else if (!currentPlayer(gameState)?.alive) {
           helperText.textContent = t("game.cannotMoveEliminated");
           panel.append(helperText);
@@ -479,6 +484,40 @@
       return actions;
     }
 
+    function isWaitingAfterSubmit(gameState) {
+      if (getMoveCancelAvailable()) {
+        return gameState?.phase !== "finished";
+      }
+      return hasSubmittedThisRound(gameState) || hasOptimisticSubmission(gameState);
+    }
+
+    function hasOptimisticSubmission(gameState) {
+      return Boolean(
+        getSubmittedMove() &&
+          gameState?.phase === "waiting_for_moves" &&
+          roundNumber(getSubmittedRound()) === roundNumber(gameState?.round)
+      );
+    }
+
+    function allPlayersHaveSubmitted(gameState) {
+      const alivePlayers = Object.values(gameState?.players || {}).filter((player) => player.alive);
+      const submittedPlayers = gameState?.submittedPlayers;
+      if (Array.isArray(submittedPlayers) && alivePlayers.length > 0) {
+        return submittedPlayers.length >= alivePlayers.length;
+      }
+
+      const receipt = getLastMoveReceipt();
+      if (
+        Array.isArray(receipt?.submittedPlayers) &&
+        Array.isArray(receipt?.neededPlayers) &&
+        receipt.neededPlayers.length > 0
+      ) {
+        return receipt.submittedPlayers.length >= receipt.neededPlayers.length;
+      }
+
+      return false;
+    }
+
     function roundNumber(value) {
       const parsed = Number(value);
       return Number.isFinite(parsed) ? parsed : undefined;
@@ -491,22 +530,11 @@
     }
 
     function shouldOfferMoveCancel(gameState) {
-      if (gameState?.phase !== "waiting_for_moves" || !hasSubmittedThisRound(gameState)) {
+      if (gameState?.phase !== "waiting_for_moves" || !isWaitingAfterSubmit(gameState)) {
         return false;
       }
 
-      const receipt = getLastMoveReceipt();
-      if (Array.isArray(receipt?.neededPlayers) && Array.isArray(receipt?.submittedPlayers)) {
-        return receipt.submittedPlayers.length < receipt.neededPlayers.length;
-      }
-
-      const submittedPlayers = gameState.submittedPlayers;
-      const alivePlayers = Object.values(gameState.players || {}).filter((player) => player.alive);
-      if (Array.isArray(submittedPlayers) && alivePlayers.length > 0) {
-        return submittedPlayers.length < alivePlayers.length;
-      }
-
-      return Boolean(getSubmittedMove());
+      return !allPlayersHaveSubmitted(gameState);
     }
 
     function canCancelSubmittedMove(gameState) {
@@ -551,10 +579,7 @@
 
     function cancelSelection() {
       const gameState = getCurrentGameState();
-      if (hasSubmittedThisRound(gameState)) {
-        if (!canCancelSubmittedMove(gameState)) {
-          return;
-        }
+      if (isWaitingAfterSubmit(gameState)) {
         cancelGameMove();
         return;
       }
@@ -754,7 +779,7 @@
         player &&
           player.alive &&
           gameState.phase === "waiting_for_moves" &&
-          getSubmittedRound() !== gameState.round
+          !isWaitingAfterSubmit(gameState)
       );
     }
 
@@ -778,16 +803,6 @@
           canSubmitMove(gameState) &&
           attackTargets(gameState).some((target) => target.id === player.id)
       );
-    }
-
-    function selectPlayerTarget(targetId) {
-      if (!pendingTargetMoveType) {
-        return;
-      }
-      const moveType = pendingTargetMoveType;
-      pendingTargetMoveType = undefined;
-      setSelectedTargetId(targetId);
-      sendGameMove(moveType, targetId);
     }
 
     return {

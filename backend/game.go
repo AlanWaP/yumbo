@@ -455,3 +455,17 @@ func marshalPayload(payload any) json.RawMessage {
 	}
 	return bytes
 }
+
+func pendingMoveForPlayer(g *gameSession, playerID string) json.RawMessage {
+	if g == nil {
+		return nil
+	}
+	move, ok := g.PendingMoves[playerID]
+	if !ok {
+		return nil
+	}
+	return marshalPayload(gameMovePayload{
+		MoveType: move.Type,
+		TargetID: move.TargetID,
+	})
+}

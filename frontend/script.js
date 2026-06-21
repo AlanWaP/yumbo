@@ -14,6 +14,7 @@ const languageToggleButton = document.querySelector("#language-toggle-button");
 const joinQueueButton = document.querySelector("#join-queue-button");
 const leaveQueueButton = document.querySelector("#leave-queue-button");
 const leaveRoomButton = document.querySelector("#leave-room-button");
+const cancelMoveButton = document.querySelector("#cancel-move-button");
 const refreshLobbyButton = document.querySelector("#refresh-lobby-button");
 const existingGamesList = document.querySelector("#existing-games-list");
 const gameFrame = document.querySelector("#game-frame");
@@ -49,6 +50,7 @@ let submittedRound;
 let submittedMove;
 let selectedTargetId;
 let lastMoveReceipt;
+let moveCancelAvailable = false;
 let currentStatus = { key: "status.enterBackend" };
 let activeServerUrl;
 let intentionalClose = false;
@@ -118,6 +120,7 @@ const gameScreen = window.createGameScreen({
   },
   getCurrentGameState: () => currentGameState,
   getLastMoveReceipt: () => lastMoveReceipt,
+  getMoveCancelAvailable: () => moveCancelAvailable,
   sendGameMove,
   cancelGameMove,
   formatPlayerIds,
@@ -180,6 +183,10 @@ leaveQueueButton.addEventListener("click", () => {
 
 leaveRoomButton.addEventListener("click", () => {
   send({ type: "leave_room" });
+});
+
+cancelMoveButton.addEventListener("click", () => {
+  cancelGameMove();
 });
 
 refreshLobbyButton.addEventListener("click", () => {
@@ -309,6 +316,7 @@ function resetSessionState() {
   joinQueueButton.hidden = false;
   leaveQueueButton.hidden = true;
   leaveRoomButton.hidden = true;
+  cancelMoveButton.hidden = true;
   playerId = undefined;
   roomId = undefined;
   gameType = undefined;
@@ -317,10 +325,7 @@ function resetSessionState() {
   isQueued = false;
   lobbyGames = [];
   currentGameState = undefined;
-  submittedRound = undefined;
-  submittedMove = undefined;
-  selectedTargetId = undefined;
-  lastMoveReceipt = undefined;
+  clearSubmittedMoveState();
   updateLabels();
   renderExistingGames();
   hideGameSurfaces();
@@ -365,9 +370,7 @@ function handleServerMessage(rawMessage) {
     playerCount = undefined;
     isQueued = false;
     currentGameState = undefined;
-    submittedRound = undefined;
-    submittedMove = undefined;
-    selectedTargetId = undefined;
+    clearSubmittedMoveState();
     updateLabels();
     setStatus("status.notInQueue");
     showWaitingRoom();
@@ -384,9 +387,7 @@ function handleServerMessage(rawMessage) {
     playerCount = undefined;
     isQueued = false;
     currentGameState = undefined;
-    submittedRound = undefined;
-    submittedMove = undefined;
-    selectedTargetId = undefined;
+    clearSubmittedMoveState();
     updateLabels();
     setStatus("status.leftRoom");
     showWaitingRoom();
@@ -397,9 +398,7 @@ function handleServerMessage(rawMessage) {
   }
 
   if (message.type === "peer_left") {
-    submittedRound = undefined;
-    submittedMove = undefined;
-    selectedTargetId = undefined;
+    clearSubmittedMoveState();
     if (message.payload) {
       currentGameState = message.payload;
       updateLabels();
@@ -440,7 +439,9 @@ function handleServerMessage(rawMessage) {
 
   if (message.type === "game_move_accepted") {
     lastMoveReceipt = message.payload;
-    submittedRound = message.payload?.round;
+    submittedRound = roundNumber(message.payload?.round);
+    applySubmittedMoveFromMessage(message);
+    markMoveCancelAvailable();
     if (currentGameState && message.payload?.submittedPlayers) {
       currentGameState = {
         ...currentGameState,
@@ -453,10 +454,7 @@ function handleServerMessage(rawMessage) {
   }
 
   if (message.type === "game_move_cancelled") {
-    lastMoveReceipt = undefined;
-    submittedRound = undefined;
-    submittedMove = undefined;
-    selectedTargetId = undefined;
+    clearSubmittedMoveState();
     setStatus("status.moveCancelled");
     renderGameState(currentGameState);
     return;
@@ -468,16 +466,20 @@ function handleServerMessage(rawMessage) {
     message.type === "game_finished"
   ) {
     currentGameState = message.payload;
-    if (roundNumber(currentGameState?.round) !== roundNumber(submittedRound)) {
-      lastMoveReceipt = undefined;
-      submittedRound = undefined;
-      submittedMove = undefined;
-      selectedTargetId = undefined;
-    } else if (lastMoveReceipt && Array.isArray(currentGameState?.submittedPlayers)) {
-      lastMoveReceipt = {
-        ...lastMoveReceipt,
-        submittedPlayers: currentGameState.submittedPlayers,
-      };
+    const currentRound = roundNumber(currentGameState?.round);
+    const trackedRound = roundNumber(submittedRound);
+    if (message.type !== "game_state" || currentGameState?.phase === "finished") {
+      clearSubmittedMoveState();
+    } else if (trackedRound !== undefined && currentRound !== trackedRound) {
+      clearSubmittedMoveState();
+    } else {
+      syncSubmissionFromGameState(currentGameState);
+      if (lastMoveReceipt && Array.isArray(currentGameState?.submittedPlayers)) {
+        lastMoveReceipt = {
+          ...lastMoveReceipt,
+          submittedPlayers: currentGameState.submittedPlayers,
+        };
+      }
     }
     setGameStatus(message.type, currentGameState);
     updateLabels();
@@ -499,10 +501,7 @@ function applyQueuedState(message) {
   roomId = undefined;
   isQueued = true;
   currentGameState = undefined;
-  submittedRound = undefined;
-  submittedMove = undefined;
-  selectedTargetId = undefined;
-  lastMoveReceipt = undefined;
+  clearSubmittedMoveState();
   updateLabels();
   setStatus(message.type === "already_queued" && message.restored ? "status.sessionRestoredQueue" : "status.waitingPlayers");
   showWaitingRoom();
@@ -522,9 +521,12 @@ function applyRoomState(message) {
   updateLabels();
   setStatus(message.restored ? "status.sessionRestoredRoom" : "status.roomCreated");
   currentGameState = message.payload;
-  submittedRound = undefined;
-  submittedMove = undefined;
-  selectedTargetId = undefined;
+  clearSubmittedMoveState();
+  applySubmittedMoveFromMessage(message);
+  syncSubmissionFromGameState(currentGameState);
+  if (hasActiveSubmittedMove()) {
+    markMoveCancelAvailable();
+  }
   showGameFrame();
   renderGameState(currentGameState);
   joinQueueButton.hidden = false;
@@ -588,6 +590,50 @@ function requestLobby() {
   send({ type: "request_lobby" });
 }
 
+function applySubmittedMoveFromMessage(message) {
+  let move = message?.submittedMove;
+  if (!move) {
+    return;
+  }
+  if (typeof move === "string") {
+    try {
+      move = JSON.parse(move);
+    } catch {
+      return;
+    }
+  }
+  if (move?.moveType) {
+    submittedMove = {
+      moveType: move.moveType,
+      targetId: move.targetId,
+    };
+  }
+}
+
+function syncSubmissionFromGameState(gameState) {
+  if (!gameState || gameState.phase !== "waiting_for_moves" || !playerId) {
+    return;
+  }
+
+  const submittedPlayers = gameState.submittedPlayers;
+  if (!Array.isArray(submittedPlayers) || !submittedPlayers.includes(playerId)) {
+    return;
+  }
+
+  submittedRound = roundNumber(gameState.round);
+  markMoveCancelAvailable();
+  if (!lastMoveReceipt) {
+    const neededPlayers = Object.values(gameState.players || {})
+      .filter((player) => player.alive)
+      .map((player) => player.id);
+    lastMoveReceipt = {
+      round: submittedRound,
+      submittedPlayers,
+      neededPlayers,
+    };
+  }
+}
+
 function roundNumber(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
@@ -634,6 +680,37 @@ function hideGameSurfaces() {
 
 function renderGameState(gameState) {
   gameScreen.renderGameState(gameState);
+  updateActionButtons();
+}
+
+function clearSubmittedMoveState() {
+  lastMoveReceipt = undefined;
+  submittedRound = undefined;
+  submittedMove = undefined;
+  selectedTargetId = undefined;
+  moveCancelAvailable = false;
+  updateActionButtons();
+}
+
+function markMoveCancelAvailable() {
+  moveCancelAvailable = true;
+  updateActionButtons();
+}
+
+function hasActiveSubmittedMove() {
+  if (!currentGameState || currentGameState.phase === "finished") {
+    return false;
+  }
+  if (moveCancelAvailable) {
+    return true;
+  }
+  const round = roundNumber(currentGameState?.round);
+  const tracked = roundNumber(submittedRound);
+  return Boolean(submittedMove && tracked !== undefined && tracked === round);
+}
+
+function updateActionButtons() {
+  cancelMoveButton.hidden = !(roomId && hasActiveSubmittedMove());
 }
 
 function sendGameMove(moveType, targetId) {
@@ -641,6 +718,8 @@ function sendGameMove(moveType, targetId) {
     moveType,
     targetId,
   };
+  submittedRound = roundNumber(currentGameState?.round);
+  markMoveCancelAvailable();
   send({
     type: "game_move",
     payload: {
@@ -712,6 +791,7 @@ function updateLabels() {
   sessionStatusLabel.textContent = t("labels.sessionStatus", {
     status: formatSessionStatus(),
   });
+  updateActionButtons();
 }
 
 function formatGameType(value) {

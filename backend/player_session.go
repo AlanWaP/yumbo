@@ -139,16 +139,17 @@ func (h *hub) appendSessionRestoreLocked(currentPlayer *player, messages *[]outb
 	*messages = append(*messages, outboundMessage{
 		player: currentPlayer,
 		body: serverMessage{
-			Type:        "room_created",
-			PlayerID:    currentPlayer.id,
-			RoomID:      currentRoom.id,
-			GameType:    currentRoom.gameType,
-			GameMode:    currentRoom.gameMode,
-			TeamCount:   currentRoom.teamCount,
-			PlayerCount: currentRoom.playerCount,
-			Players:     players,
-			Restored:    true,
-			Payload:     marshalPayload(currentRoom.game),
+			Type:          "room_created",
+			PlayerID:      currentPlayer.id,
+			RoomID:        currentRoom.id,
+			GameType:      currentRoom.gameType,
+			GameMode:      currentRoom.gameMode,
+			TeamCount:     currentRoom.teamCount,
+			PlayerCount:   currentRoom.playerCount,
+			Players:       players,
+			Restored:      true,
+			SubmittedMove: pendingMoveForPlayer(currentRoom.game, currentPlayer.id),
+			Payload:       marshalPayload(currentRoom.game),
 		},
 	})
 }

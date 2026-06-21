@@ -532,6 +532,12 @@ button.game-card:hover:not(:disabled) {
   margin-top: 18px;
 }
 
+.actions #cancel-move-button {
+  background: #ffffff;
+  color: #33406a;
+  border: 1px solid #cfd7eb;
+}
+
 .actions #leave-room-button,
 #leave-queue-button {
   background: #69738f;
