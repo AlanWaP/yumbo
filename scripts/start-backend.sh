@@ -22,6 +22,9 @@ if ! command -v cloudflared >/dev/null 2>&1; then
   exit 1
 fi
 
+# shellcheck source=port_check.sh
+source "${SCRIPT_DIR}/port_check.sh"
+
 cleanup() {
   if [[ -n "$TUNNEL_PID" ]] && kill -0 "$TUNNEL_PID" 2>/dev/null; then
     kill "$TUNNEL_PID" 2>/dev/null || true
@@ -35,6 +38,8 @@ cleanup() {
 }
 
 trap cleanup EXIT INT TERM
+
+require_port_available "${PORT}" "backend" "./scripts/start-backend.sh"
 
 echo "Starting Yumbo backend on ws://localhost:${PORT}"
 PORT="$PORT" go run ./backend &
@@ -56,6 +61,11 @@ for _ in {1..60}; do
 
   if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
     echo "Backend stopped before tunnel was ready." >&2
+    if port_in_use "$PORT"; then
+      echo "Port ${PORT} is already in use." >&2
+      print_port_usage "$PORT"
+      echo "Or choose another port: PORT=3001 ./scripts/start-backend.sh" >&2
+    fi
     exit 1
   fi
 

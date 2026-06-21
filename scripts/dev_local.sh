@@ -43,7 +43,13 @@ trap shutdown INT TERM
 require_command go
 require_command python3
 
+# shellcheck source=port_check.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/port_check.sh"
+
 cd "${ROOT_DIR}"
+
+require_port_available "${PORT}" "backend" "./scripts/dev_local.sh"
+require_port_available "${FRONTEND_PORT}" "frontend" "./scripts/dev_local.sh"
 
 echo "Starting Yumbo backend on ${SERVER_URL}..."
 PORT="${PORT}" go run ./backend &
@@ -52,6 +58,18 @@ backend_pid="$!"
 echo "Starting frontend on http://localhost:${FRONTEND_PORT}..."
 python3 -m http.server "${FRONTEND_PORT}" --directory frontend >/dev/null 2>&1 &
 frontend_pid="$!"
+
+sleep 1
+
+if ! kill -0 "${backend_pid}" 2>/dev/null; then
+  echo "Backend failed to start on port ${PORT}." >&2
+  exit 1
+fi
+
+if ! kill -0 "${frontend_pid}" 2>/dev/null; then
+  echo "Frontend failed to start on port ${FRONTEND_PORT}." >&2
+  exit 1
+fi
 
 echo
 echo "Local development is running:"
