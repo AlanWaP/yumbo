@@ -8,8 +8,8 @@ const gameModeInput = document.querySelector("#game-mode");
 const playerCountInput = document.querySelector("#player-count");
 const playerLabel = document.querySelector("#player-label");
 const gameLabel = document.querySelector("#game-label");
-const playerCountLabel = document.querySelector("#player-count-label");
 const roomLabel = document.querySelector("#room-label");
+const sessionStatusLabel = document.querySelector("#session-status-label");
 const languageToggleButton = document.querySelector("#language-toggle-button");
 const joinQueueButton = document.querySelector("#join-queue-button");
 const leaveQueueButton = document.querySelector("#leave-queue-button");
@@ -271,6 +271,8 @@ function handleServerMessage(rawMessage) {
 
   if (message.type === "queue_left" || message.type === "not_queued") {
     roomId = undefined;
+    gameType = undefined;
+    gameMode = undefined;
     playerCount = undefined;
     isQueued = false;
     currentGameState = undefined;
@@ -329,6 +331,7 @@ function handleServerMessage(rawMessage) {
       selectedTargetId = undefined;
     }
     setGameStatus(message.type, currentGameState);
+    updateLabels();
     renderGameState(currentGameState);
     return;
   }
@@ -475,6 +478,24 @@ function updatePlayerCountOptions() {
   }
 }
 
+function formatSessionStatus() {
+  const connected = Boolean(socket && socket.readyState === WebSocket.OPEN && playerId);
+
+  if (!connected) {
+    return t("session.notConnected");
+  }
+  if (isQueued) {
+    return t("session.waiting");
+  }
+  if (roomId && currentGameState?.phase === "finished") {
+    return t("session.finished");
+  }
+  if (roomId) {
+    return t("session.inProgress");
+  }
+  return t("session.noGame");
+}
+
 function updateLabels() {
   playerLabel.textContent = t("labels.player", {
     player: playerId || t("labels.playerUnassigned"),
@@ -483,10 +504,10 @@ function updateLabels() {
     game: gameType ? formatGameType(gameType) : t("labels.gameNone"),
     mode: gameMode ? t("labels.gameModeSuffix", { mode: formatGameMode(gameMode) }) : "",
   });
-  playerCountLabel.textContent = t("labels.playersNeeded", {
-    count: playerCount || t("labels.gameNone"),
-  });
   roomLabel.textContent = t("labels.room", { room: roomId || t("labels.gameNone") });
+  sessionStatusLabel.textContent = t("labels.sessionStatus", {
+    status: formatSessionStatus(),
+  });
 }
 
 function formatGameType(value) {
