@@ -8,6 +8,10 @@
 
   const savedLanguage = readSavedLanguage();
   let currentLanguage = supportedLanguages.includes(savedLanguage) ? savedLanguage : "en";
+
+  if (!sessionStorage.getItem(languageStorageKey)) {
+    sessionStorage.setItem(languageStorageKey, currentLanguage);
+  }
   const listeners = new Set();
 
   const translations = {
