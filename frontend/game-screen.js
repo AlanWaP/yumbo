@@ -509,6 +509,9 @@
       button.type = "button";
       button.textContent = label;
       button.disabled = Boolean(options.disabled);
+      if (options.targeted) {
+        button.classList.add("targeted-move");
+      }
       if (isArmedMove(moveType)) {
         button.classList.add("selected-move");
       }

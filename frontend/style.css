@@ -490,6 +490,20 @@ button.game-card:hover:not(:disabled) {
   background: #f8faff;
 }
 
+.game-controls button.targeted-move {
+  background: #ff9f1c;
+  color: #182033;
+}
+
+.game-controls button.targeted-move:hover:not(:disabled) {
+  background: #ffb347;
+}
+
+.game-controls button.targeted-move.selected-move {
+  box-shadow: 0 0 0 2px rgba(255, 159, 28, 0.35);
+  background: #ffbf66;
+}
+
 .move-table {
   width: 100%;
   border-collapse: collapse;
