@@ -556,31 +556,27 @@
       const groups = groupAdjacentMovesByEnergy(moves);
 
       for (const group of groups) {
-        for (let index = 0; index < group.moves.length; index++) {
-          const move = group.moves[index];
-          const tableRow = document.createElement("tr");
-          if (index === group.moves.length - 1) {
-            tableRow.classList.add("move-table-energy-end");
-          }
+        const tableRow = document.createElement("tr");
+        tableRow.classList.add("move-table-energy-end");
 
-          if (index === 0) {
-            const energyCell = document.createElement("th");
-            energyCell.scope = "row";
-            energyCell.rowSpan = group.moves.length;
-            energyCell.textContent = String(group.energy);
-            tableRow.append(energyCell);
-          }
+        const energyCell = document.createElement("th");
+        energyCell.scope = "row";
+        energyCell.textContent = String(group.energy);
 
-          const movesCell = document.createElement("td");
-          movesCell.append(
+        const movesCell = document.createElement("td");
+        const moveButtons = document.createElement("div");
+        moveButtons.className = "move-table-buttons";
+        for (const move of group.moves) {
+          moveButtons.append(
             createMoveButton(move.label, move.moveType, {
               disabled: move.disabled,
               targeted: move.targeted,
             })
           );
-          tableRow.append(movesCell);
-          tbody.append(tableRow);
         }
+        movesCell.append(moveButtons);
+        tableRow.append(energyCell, movesCell);
+        tbody.append(tableRow);
       }
 
       table.append(thead, tbody);

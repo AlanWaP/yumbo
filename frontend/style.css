@@ -416,6 +416,10 @@ button.game-card:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.72);
 }
 
+.action-panel {
+  container-type: inline-size;
+}
+
 .player-status-panel h3,
 .action-panel h3 {
   margin: 0 0 12px;
@@ -516,16 +520,33 @@ button.game-card:hover:not(:disabled) {
 }
 
 .move-table tbody tr.move-table-energy-end td,
-.move-table tbody tr.move-table-energy-end th[rowspan] {
+.move-table tbody tr.move-table-energy-end th {
   border-bottom: 2px solid #c5cde4;
 }
 
-.move-table td {
+.move-table-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.move-table-buttons button {
   width: 100%;
 }
 
-.game-controls .move-table button {
-  width: 100%;
+@container (min-width: 280px) {
+  .move-table-buttons {
+    flex-direction: row;
+    flex-wrap: nowrap;
+  }
+
+  .move-table-buttons button {
+    flex: 1 1 0;
+    min-width: 0;
+    width: auto;
+    padding: 10px 8px;
+    font-size: 0.88rem;
+  }
 }
 
 .action-buttons {
@@ -583,6 +604,20 @@ button.game-card:hover:not(:disabled) {
 .actions #leave-room-button,
 #leave-queue-button {
   background: #69738f;
+}
+
+@media (min-width: 768px) {
+  .card {
+    width: min(860px, 100%);
+  }
+
+  .game-board-content {
+    grid-template-columns: minmax(0, 1fr) 360px;
+  }
+
+  .player-status-panel {
+    max-width: 420px;
+  }
 }
 
 @media (max-width: 640px) {
