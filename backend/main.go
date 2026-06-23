@@ -139,6 +139,7 @@ func handleRequest(gameHub *hub, w http.ResponseWriter, r *http.Request) {
 		frontendDir = "frontend"
 	}
 
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
 	http.FileServer(http.Dir(frontendDir)).ServeHTTP(w, r)
 }
 

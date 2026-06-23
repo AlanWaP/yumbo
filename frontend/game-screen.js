@@ -420,7 +420,10 @@
         return panel;
       }
 
-      helperText.textContent = formatActionHelper(gameState);
+      helperText.textContent = formatActionHelper(
+        gameState,
+        gameState.gameType === "power_defense_wave"
+      );
       panel.append(
         helperText,
         gameState.gameType === "power_defense_wave"
@@ -430,11 +433,11 @@
       return panel;
     }
 
-    function formatActionHelper(gameState) {
+    function formatActionHelper(gameState, isPowerDefenseWave) {
       if (pendingTargetMoveType) {
         return t("game.chooseTargetFor", { move: formatMoveName(pendingTargetMoveType) });
       }
-      if (gameState?.gameType === "power_defense_wave") {
+      if (isPowerDefenseWave) {
         return t("game.pickMovePdw");
       }
       return t("game.pickMove");
@@ -531,7 +534,7 @@
       return translatedMove === `move.${moveType}` ? moveType : translatedMove;
     }
 
-    function createMoveTable(moveRows) {
+    function createMoveTable(moves) {
       const table = document.createElement("table");
       table.className = "move-table";
 
@@ -550,45 +553,51 @@
       thead.append(headerRow);
 
       const tbody = document.createElement("tbody");
-      for (const row of moveRows) {
-        const tableRow = document.createElement("tr");
+      const groups = groupAdjacentMovesByEnergy(moves);
 
-        const energyCell = document.createElement("th");
-        energyCell.scope = "row";
-        energyCell.textContent = String(row.energy);
+      for (const group of groups) {
+        for (let index = 0; index < group.moves.length; index++) {
+          const move = group.moves[index];
+          const tableRow = document.createElement("tr");
+          if (index === group.moves.length - 1) {
+            tableRow.classList.add("move-table-energy-end");
+          }
 
-        const movesCell = document.createElement("td");
-        const moveButtons = document.createElement("div");
-        moveButtons.className = "move-table-buttons";
-        for (const move of row.moves) {
-          moveButtons.append(
+          if (index === 0) {
+            const energyCell = document.createElement("th");
+            energyCell.scope = "row";
+            energyCell.rowSpan = group.moves.length;
+            energyCell.textContent = String(group.energy);
+            tableRow.append(energyCell);
+          }
+
+          const movesCell = document.createElement("td");
+          movesCell.append(
             createMoveButton(move.label, move.moveType, {
               disabled: move.disabled,
               targeted: move.targeted,
             })
           );
+          tableRow.append(movesCell);
+          tbody.append(tableRow);
         }
-        movesCell.append(moveButtons);
-        tableRow.append(energyCell, movesCell);
-        tbody.append(tableRow);
       }
 
       table.append(thead, tbody);
       return table;
     }
 
-    function groupMovesByEnergy(moves) {
-      const grouped = new Map();
+    function groupAdjacentMovesByEnergy(moves) {
+      const groups = [];
       for (const move of moves) {
-        if (!grouped.has(move.energy)) {
-          grouped.set(move.energy, []);
+        const lastGroup = groups[groups.length - 1];
+        if (lastGroup && lastGroup.energy === move.energy) {
+          lastGroup.moves.push(move);
+          continue;
         }
-        grouped.get(move.energy).push(move);
+        groups.push({ energy: move.energy, moves: [move] });
       }
-
-      return [...grouped.entries()]
-        .sort(([leftEnergy], [rightEnergy]) => leftEnergy - rightEnergy)
-        .map(([energy, rowMoves]) => ({ energy, moves: rowMoves }));
+      return groups;
     }
 
     function createPowerDefenseWaveControls(gameState) {
@@ -598,7 +607,7 @@
       const hasTargets = attackTargets(gameState).length > 0;
       const rules = gameState.rules;
 
-      const moveRows = groupMovesByEnergy([
+      const moves = [
         {
           energy: 0,
           moveType: "power",
@@ -630,9 +639,9 @@
           label: formatMoveName("super_blast"),
           disabled: player.power < rules.superBlastCost,
         },
-      ]);
+      ];
 
-      controls.append(createMoveTable(moveRows));
+      controls.append(createMoveTable(moves));
       return controls;
     }
 

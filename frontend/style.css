@@ -506,23 +506,26 @@ button.game-card:hover:not(:disabled) {
 }
 
 .move-table tbody th {
-  width: 72px;
+  width: 56px;
   color: #182033;
   font-size: 0.95rem;
   font-weight: 800;
   text-align: center;
+  vertical-align: middle;
   white-space: nowrap;
 }
 
-.move-table-buttons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+.move-table tbody tr.move-table-energy-end td,
+.move-table tbody tr.move-table-energy-end th[rowspan] {
+  border-bottom: 2px solid #c5cde4;
 }
 
-.move-table-buttons button {
-  width: auto;
-  flex: 1 1 140px;
+.move-table td {
+  width: 100%;
+}
+
+.game-controls .move-table button {
+  width: 100%;
 }
 
 .action-buttons {

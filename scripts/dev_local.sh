@@ -6,7 +6,8 @@ PORT="${PORT:-3000}"
 FRONTEND_PORT="${FRONTEND_PORT:-8080}"
 SERVER_URL="${SERVER_URL:-ws://localhost:${PORT}}"
 OPEN_BROWSER="${OPEN_BROWSER:-1}"
-FRONTEND_URL="http://localhost:${FRONTEND_PORT}/?server=${SERVER_URL}"
+APP_URL="http://localhost:${PORT}/?server=${SERVER_URL}"
+LEGACY_FRONTEND_URL="http://localhost:${FRONTEND_PORT}/?server=${SERVER_URL}"
 
 backend_pid=""
 frontend_pid=""
@@ -49,15 +50,18 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/port_check.sh"
 cd "${ROOT_DIR}"
 
 require_port_available "${PORT}" "backend" "./scripts/dev_local.sh"
-require_port_available "${FRONTEND_PORT}" "frontend" "./scripts/dev_local.sh"
 
 echo "Starting Yumbo backend on ${SERVER_URL}..."
 PORT="${PORT}" go run ./backend &
 backend_pid="$!"
 
-echo "Starting frontend on http://localhost:${FRONTEND_PORT}..."
-python3 -m http.server "${FRONTEND_PORT}" --directory frontend >/dev/null 2>&1 &
-frontend_pid="$!"
+if [[ "${FRONTEND_PORT}" != "${PORT}" ]]; then
+  require_port_available "${FRONTEND_PORT}" "frontend" "./scripts/dev_local.sh"
+  echo "Starting frontend on http://localhost:${FRONTEND_PORT}..."
+  python3 "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/dev_frontend_server.py" \
+    "${FRONTEND_PORT}" "${ROOT_DIR}/frontend" >/dev/null 2>&1 &
+  frontend_pid="$!"
+fi
 
 sleep 1
 
@@ -66,20 +70,24 @@ if ! kill -0 "${backend_pid}" 2>/dev/null; then
   exit 1
 fi
 
-if ! kill -0 "${frontend_pid}" 2>/dev/null; then
+if [[ -n "${frontend_pid}" ]] && ! kill -0 "${frontend_pid}" 2>/dev/null; then
   echo "Frontend failed to start on port ${FRONTEND_PORT}." >&2
   exit 1
 fi
 
 echo
 echo "Local development is running:"
+echo "  Open:     ${APP_URL}"
 echo "  Backend:  ${SERVER_URL}"
-echo "  Frontend: ${FRONTEND_URL}"
+if [[ -n "${frontend_pid}" ]]; then
+  echo "  Legacy:   ${LEGACY_FRONTEND_URL} (optional second frontend server)"
+fi
 echo
+echo "Use the Open URL above. Hard refresh once if the action panel still looks old."
 echo "Press Ctrl-C to stop both servers."
 
 if [[ "${OPEN_BROWSER}" == "1" ]] && command -v open >/dev/null 2>&1; then
-  open "${FRONTEND_URL}" >/dev/null 2>&1 || true
+  open "${APP_URL}" >/dev/null 2>&1 || true
 fi
 
 while true; do
@@ -87,7 +95,7 @@ while true; do
     echo "Backend stopped unexpectedly."
     exit 1
   fi
-  if ! kill -0 "${frontend_pid}" 2>/dev/null; then
+  if [[ -n "${frontend_pid}" ]] && ! kill -0 "${frontend_pid}" 2>/dev/null; then
     echo "Frontend server stopped unexpectedly."
     exit 1
   fi
