@@ -13,6 +13,7 @@
     formatPlayerIds,
     t,
   }) {
+    const moveUi = window.yumboMoveUi;
     let currentGameId;
     let activeInfoTab = "log";
     let pendingTargetMoveType;
@@ -420,25 +421,17 @@
         return panel;
       }
 
-      helperText.textContent = formatActionHelper(
-        gameState,
-        gameState.gameType === "power_defense_wave"
-      );
-      panel.append(
-        helperText,
-        gameState.gameType === "power_defense_wave"
-          ? createPowerDefenseWaveControls(gameState)
-          : createMoveControls(gameState)
-      );
+      helperText.textContent = formatActionHelper(gameState);
+      panel.append(helperText, createCatalogMoveControls(gameState));
       return panel;
     }
 
-    function formatActionHelper(gameState, isPowerDefenseWave) {
+    function formatActionHelper(gameState) {
       if (pendingTargetMoveType) {
         return t("game.chooseTargetFor", { move: formatMoveName(pendingTargetMoveType) });
       }
-      if (isPowerDefenseWave) {
-        return t("game.pickMovePdw");
+      if (moveUi.hasTargetSelectionMoves(gameState.moveCatalog)) {
+        return t("game.pickMoveWithTargets");
       }
       return t("game.pickMove");
     }
@@ -509,14 +502,14 @@
       button.type = "button";
       button.textContent = label;
       button.disabled = Boolean(options.disabled);
-      if (options.targeted) {
-        button.classList.add("targeted-move");
+      if (moveUi.requiresTargetPlayer(options.entry)) {
+        button.classList.add(moveUi.TARGETED_BUTTON_CLASS);
       }
       if (isArmedMove(moveType)) {
         button.classList.add("selected-move");
       }
       button.addEventListener("click", () => {
-        if (options.targeted) {
+        if (moveUi.requiresTargetPlayer(options.entry)) {
           armTargetedMove(moveType);
         } else {
           clearLocalStaging();
@@ -573,7 +566,7 @@
           moveButtons.append(
             createMoveButton(move.label, move.moveType, {
               disabled: move.disabled,
-              targeted: move.targeted,
+              entry: move.entry,
             })
           );
         }
@@ -599,46 +592,19 @@
       return groups;
     }
 
-    function createPowerDefenseWaveControls(gameState) {
+    function createCatalogMoveControls(gameState) {
       const controls = document.createElement("div");
       controls.className = "game-controls";
       const player = currentPlayer(gameState);
       const hasTargets = attackTargets(gameState).length > 0;
-      const rules = gameState.rules;
-
-      const moves = [
-        {
-          energy: 0,
-          moveType: "power",
-          label: t("game.powerButton", { amount: rules.gainPowerAmount }),
-        },
-        {
-          energy: 0,
-          moveType: "defense",
-          label: formatMoveName("defense"),
-          disabled: (player?.defenseStreak || 0) >= 2,
-        },
-        {
-          energy: 0,
-          moveType: "air_cannon",
-          label: formatMoveName("air_cannon"),
-          targeted: true,
-          disabled: !hasTargets,
-        },
-        {
-          energy: rules.waveCost,
-          moveType: "wave",
-          label: formatMoveName("wave"),
-          targeted: true,
-          disabled: !hasTargets || player.power < rules.waveCost,
-        },
-        {
-          energy: rules.superBlastCost,
-          moveType: "super_blast",
-          label: formatMoveName("super_blast"),
-          disabled: player.power < rules.superBlastCost,
-        },
-      ];
+      const moves = moveUi.buildTableMoves(
+        gameState.moveCatalog,
+        gameState,
+        player,
+        hasTargets,
+        t,
+        formatMoveName
+      );
 
       controls.append(createMoveTable(moves));
       return controls;
@@ -651,52 +617,6 @@
       const moveType = pendingTargetMoveType;
       clearLocalStaging();
       sendGameMove(moveType, targetId);
-    }
-
-    function createMoveControls(gameState) {
-      const controls = document.createElement("div");
-      controls.className = "game-controls";
-
-      const attackGroup = document.createElement("div");
-      attackGroup.className = "action-group";
-
-      const attackLabel = document.createElement("label");
-      attackLabel.textContent = t("game.attackTarget");
-
-      const targetSelect = document.createElement("select");
-      const targets = attackTargets(gameState);
-      for (const target of targets) {
-        const option = document.createElement("option");
-        option.value = target.id;
-        option.textContent = target.id;
-        targetSelect.append(option);
-      }
-
-      const attackButton = document.createElement("button");
-      attackButton.type = "button";
-      attackButton.textContent = t("game.costPowerButton", {
-        move: formatMoveName("attack"),
-        cost: gameState.rules.attackCost,
-      });
-      attackButton.disabled =
-        targets.length === 0 || currentPlayer(gameState).power < gameState.rules.attackCost;
-      attackButton.addEventListener("click", () => {
-        sendGameMove("attack", targetSelect.value);
-      });
-      attackGroup.append(attackLabel, targetSelect, attackButton);
-
-      const basicActions = document.createElement("div");
-      basicActions.className = "action-group";
-      basicActions.append(
-        createMoveButton(formatMoveName("defend"), "defend"),
-        createMoveButton(
-          t("game.gainPowerButton", { amount: gameState.rules.gainPowerAmount }),
-          "gain_power"
-        )
-      );
-
-      controls.append(attackGroup, basicActions);
-      return controls;
     }
 
     function canSubmitMove(gameState) {

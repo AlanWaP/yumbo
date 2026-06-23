@@ -11,6 +11,13 @@ const (
 )
 
 var PowerDefenseWave = combat.GameDefinition{
+	MoveOrder: []string{
+		MovePower,
+		MoveDefense,
+		MoveAirCannon,
+		MoveWave,
+		MoveSuperBlast,
+	},
 	Health: combat.HealthSpec{
 		Starting: 1,
 		Max:      1,

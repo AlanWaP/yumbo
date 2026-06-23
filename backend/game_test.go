@@ -158,3 +158,33 @@ func TestGameSessionRejectsCancelAfterAllPlayersMove(t *testing.T) {
 		t.Fatal("expected cancel to fail once all players have moved")
 	}
 }
+
+func TestGameSessionIncludesMoveCatalog(t *testing.T) {
+	session := newGameSession("room_one", gameTypePowerDefenseWave, []string{"player_one", "player_two"}, gameModeFreeForAll, 2)
+
+	payload, err := json.Marshal(session)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var decoded struct {
+		MoveCatalog []struct {
+			ID                   string `json:"id"`
+			RequiresTargetPlayer bool   `json:"requiresTargetPlayer"`
+		} `json:"moveCatalog"`
+	}
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if len(decoded.MoveCatalog) != 5 {
+		t.Fatalf("expected five catalog moves, got %d", len(decoded.MoveCatalog))
+	}
+
+	targeted := map[string]bool{}
+	for _, entry := range decoded.MoveCatalog {
+		targeted[entry.ID] = entry.RequiresTargetPlayer
+	}
+	if !targeted["wave"] || !targeted["air_cannon"] {
+		t.Fatalf("expected targeted moves in catalog, got %v", targeted)
+	}
+}

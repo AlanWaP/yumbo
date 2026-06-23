@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"github.com/AlanWaP/yumbo/backend/combat"
+	"github.com/AlanWaP/yumbo/backend/games"
 )
 
 const (
@@ -39,6 +42,7 @@ type gameSession struct {
 	Teams        map[string][]string      `json:"teams"`
 	PendingMoves map[string]submittedMove `json:"-"`
 	Rules        gameRules                `json:"rules"`
+	MoveCatalog  []combat.MoveCatalogEntry `json:"moveCatalog"`
 	Deadline     *time.Time               `json:"deadline,omitempty"`
 	WinnerTeamID string                   `json:"winnerTeamId,omitempty"`
 	Winners      []string                 `json:"winners,omitempty"`
@@ -113,6 +117,31 @@ func gameRulesForType(gameType string) gameRules {
 	return rules
 }
 
+func moveCatalogForType(gameType string, rules gameRules) []combat.MoveCatalogEntry {
+	definition := games.Generic
+	if gameType == gameTypePowerDefenseWave {
+		definition = games.PowerDefenseWave
+	}
+
+	entries := combat.BuildMoveCatalog(definition)
+	for index := range entries {
+		switch entries[index].ID {
+		case games.MoveAttack:
+			entries[index].EnergyCost = rules.AttackCost
+		case games.MoveGainPower:
+			entries[index].EnergyGain = rules.GainPowerAmount
+		case games.MovePower:
+			entries[index].EnergyGain = rules.GainPowerAmount
+		case games.MoveWave:
+			entries[index].EnergyCost = rules.WaveCost
+		case games.MoveSuperBlast:
+			entries[index].EnergyCost = rules.SuperBlastCost
+		}
+	}
+
+	return entries
+}
+
 func normalizeGameMode(requestedMode string, playerCount int) (string, int, error) {
 	if requestedMode == "" || requestedMode == gameModeFreeForAll {
 		return gameModeFreeForAll, playerCount, nil
@@ -138,6 +167,7 @@ func newGameSession(roomID string, gameType string, playerIDs []string, mode str
 		Teams:        map[string][]string{},
 		PendingMoves: map[string]submittedMove{},
 		Rules:        rules,
+		MoveCatalog:  moveCatalogForType(gameType, rules),
 	}
 
 	if rules.RoundSeconds > 0 {

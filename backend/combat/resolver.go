@@ -3,6 +3,7 @@ package combat
 import "fmt"
 
 type GameDefinition struct {
+	MoveOrder               []string
 	Moves                   map[string]MoveSpec
 	Health                  HealthSpec
 	Interactions            []InteractionRule

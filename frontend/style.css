@@ -491,6 +491,7 @@ button.game-card:hover:not(:disabled) {
 }
 
 .game-controls button.targeted-move {
+  /* Applied to moves whose catalog entry has requiresTargetPlayer / single_enemy scope. */
   background: #ff9f1c;
   color: #182033;
 }
