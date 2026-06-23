@@ -486,6 +486,45 @@ button.game-card:hover:not(:disabled) {
   background: #f8faff;
 }
 
+.move-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.move-table th,
+.move-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #dfe4f2;
+  vertical-align: middle;
+}
+
+.move-table thead th {
+  color: #33406a;
+  font-size: 0.85rem;
+  font-weight: 800;
+  text-align: left;
+}
+
+.move-table tbody th {
+  width: 72px;
+  color: #182033;
+  font-size: 0.95rem;
+  font-weight: 800;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.move-table-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.move-table-buttons button {
+  width: auto;
+  flex: 1 1 140px;
+}
+
 .action-buttons {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));

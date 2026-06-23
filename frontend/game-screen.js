@@ -434,6 +434,9 @@
       if (pendingTargetMoveType) {
         return t("game.chooseTargetFor", { move: formatMoveName(pendingTargetMoveType) });
       }
+      if (gameState?.gameType === "power_defense_wave") {
+        return t("game.pickMovePdw");
+      }
       return t("game.pickMove");
     }
 
@@ -528,64 +531,108 @@
       return translatedMove === `move.${moveType}` ? moveType : translatedMove;
     }
 
+    function createMoveTable(moveRows) {
+      const table = document.createElement("table");
+      table.className = "move-table";
+
+      const thead = document.createElement("thead");
+      const headerRow = document.createElement("tr");
+
+      const energyHeader = document.createElement("th");
+      energyHeader.scope = "col";
+      energyHeader.textContent = t("game.moveTableEnergy");
+
+      const movesHeader = document.createElement("th");
+      movesHeader.scope = "col";
+      movesHeader.textContent = t("game.moveTableMoves");
+
+      headerRow.append(energyHeader, movesHeader);
+      thead.append(headerRow);
+
+      const tbody = document.createElement("tbody");
+      for (const row of moveRows) {
+        const tableRow = document.createElement("tr");
+
+        const energyCell = document.createElement("th");
+        energyCell.scope = "row";
+        energyCell.textContent = String(row.energy);
+
+        const movesCell = document.createElement("td");
+        const moveButtons = document.createElement("div");
+        moveButtons.className = "move-table-buttons";
+        for (const move of row.moves) {
+          moveButtons.append(
+            createMoveButton(move.label, move.moveType, {
+              disabled: move.disabled,
+              targeted: move.targeted,
+            })
+          );
+        }
+        movesCell.append(moveButtons);
+        tableRow.append(energyCell, movesCell);
+        tbody.append(tableRow);
+      }
+
+      table.append(thead, tbody);
+      return table;
+    }
+
+    function groupMovesByEnergy(moves) {
+      const grouped = new Map();
+      for (const move of moves) {
+        if (!grouped.has(move.energy)) {
+          grouped.set(move.energy, []);
+        }
+        grouped.get(move.energy).push(move);
+      }
+
+      return [...grouped.entries()]
+        .sort(([leftEnergy], [rightEnergy]) => leftEnergy - rightEnergy)
+        .map(([energy, rowMoves]) => ({ energy, moves: rowMoves }));
+    }
+
     function createPowerDefenseWaveControls(gameState) {
       const controls = document.createElement("div");
       controls.className = "game-controls";
       const player = currentPlayer(gameState);
       const hasTargets = attackTargets(gameState).length > 0;
+      const rules = gameState.rules;
 
-      const targetHint = document.createElement("p");
-      targetHint.className = "action-helper";
-      targetHint.textContent = pendingTargetMoveType
-        ? t("game.chooseTargetFor", { move: formatMoveName(pendingTargetMoveType) })
-        : t("game.chooseTargetHint");
-
-      const powerButton = createMoveButton(
-        t("game.powerButton", { amount: gameState.rules.gainPowerAmount }),
-        "power"
-      );
-
-      const defenseButton = createMoveButton(formatMoveName("defense"), "defense", {
-        disabled: (player?.defenseStreak || 0) >= 2,
-      });
-
-      const waveButton = createMoveButton(
-        t("game.costPowerButton", {
-          move: formatMoveName("wave"),
-          cost: gameState.rules.waveCost,
-        }),
-        "wave",
+      const moveRows = groupMovesByEnergy([
         {
-          disabled: !hasTargets || player.power < gameState.rules.waveCost,
+          energy: 0,
+          moveType: "power",
+          label: t("game.powerButton", { amount: rules.gainPowerAmount }),
+        },
+        {
+          energy: 0,
+          moveType: "defense",
+          label: formatMoveName("defense"),
+          disabled: (player?.defenseStreak || 0) >= 2,
+        },
+        {
+          energy: 0,
+          moveType: "air_cannon",
+          label: formatMoveName("air_cannon"),
           targeted: true,
-        }
-      );
-
-      const superBlastButton = createMoveButton(
-        t("game.costPowerButton", {
-          move: formatMoveName("super_blast"),
-          cost: gameState.rules.superBlastCost,
-        }),
-        "super_blast",
+          disabled: !hasTargets,
+        },
         {
-          disabled: player.power < gameState.rules.superBlastCost,
-        }
-      );
+          energy: rules.waveCost,
+          moveType: "wave",
+          label: formatMoveName("wave"),
+          targeted: true,
+          disabled: !hasTargets || player.power < rules.waveCost,
+        },
+        {
+          energy: rules.superBlastCost,
+          moveType: "super_blast",
+          label: formatMoveName("super_blast"),
+          disabled: player.power < rules.superBlastCost,
+        },
+      ]);
 
-      const airCannonButton = createMoveButton(formatMoveName("air_cannon"), "air_cannon", {
-        disabled: !hasTargets,
-        targeted: true,
-      });
-
-      const basicActions = document.createElement("div");
-      basicActions.className = "action-group";
-      basicActions.append(powerButton, defenseButton, superBlastButton);
-
-      const targetedActions = document.createElement("div");
-      targetedActions.className = "action-group";
-      targetedActions.append(targetHint, waveButton, airCannonButton);
-
-      controls.append(basicActions, targetedActions);
+      controls.append(createMoveTable(moveRows));
       return controls;
     }
 
