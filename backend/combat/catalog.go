@@ -7,6 +7,8 @@ type MoveCatalogEntry struct {
 	EnergyGain           int    `json:"energyGain"`
 	TargetScope          string `json:"targetScope"`
 	RequiresTargetPlayer bool   `json:"requiresTargetPlayer"`
+	MaxConsecutive       int    `json:"maxConsecutive,omitempty"`
+	MaxUsesPerGame       int    `json:"maxUsesPerGame,omitempty"`
 }
 
 func BuildMoveCatalog(def GameDefinition) []MoveCatalogEntry {
@@ -28,10 +30,26 @@ func BuildMoveCatalog(def GameDefinition) []MoveCatalogEntry {
 			EnergyGain:           spec.EnergyGain,
 			TargetScope:          string(spec.TargetScope),
 			RequiresTargetPlayer: spec.TargetScope == TargetSingleEnemy,
+			MaxConsecutive:       maxConsecutive(spec.UsageLimit),
+			MaxUsesPerGame:       maxUsesPerGame(spec.UsageLimit),
 		})
 	}
 
 	return entries
+}
+
+func maxConsecutive(limit *UsageLimit) int {
+	if limit == nil {
+		return 0
+	}
+	return limit.MaxConsecutive
+}
+
+func maxUsesPerGame(limit *UsageLimit) int {
+	if limit == nil {
+		return 0
+	}
+	return limit.MaxUsesPerGame
 }
 
 func sortedMoveIDs(moves map[string]MoveSpec) []string {

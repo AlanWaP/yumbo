@@ -484,6 +484,10 @@ button.game-card:hover:not(:disabled) {
   padding: 12px 16px;
 }
 
+.game-controls .move-table-buttons button {
+  width: auto;
+}
+
 .game-controls button.selected-move {
   border-color: #3a63f3;
   box-shadow: 0 0 0 2px rgba(58, 99, 243, 0.18);
@@ -517,6 +521,10 @@ button.game-card:hover:not(:disabled) {
   vertical-align: middle;
 }
 
+.move-table td {
+  min-width: 0;
+}
+
 .move-table thead th {
   color: #33406a;
   font-size: 0.85rem;
@@ -541,26 +549,37 @@ button.game-card:hover:not(:disabled) {
 
 .move-table-buttons {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
 .move-table-buttons button {
-  width: 100%;
+  flex: 1 1 calc(50% - 4px);
+  min-width: 0;
+  max-width: calc(50% - 4px);
+  padding: 9px 10px;
+  border-radius: 14px;
+  font-size: 0.8rem;
+  line-height: 1.25;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
-@container (min-width: 280px) {
-  .move-table-buttons {
-    flex-direction: row;
-    flex-wrap: nowrap;
+.move-table-buttons button:only-child {
+  flex: 0 1 auto;
+  max-width: 100%;
+}
+
+@container (min-width: 320px) {
+  .move-table-buttons button {
+    flex: 1 1 calc(33.333% - 6px);
+    max-width: calc(33.333% - 6px);
   }
 
-  .move-table-buttons button {
-    flex: 1 1 0;
-    min-width: 0;
-    width: auto;
-    padding: 10px 8px;
-    font-size: 0.88rem;
+  .move-table-buttons button:only-child {
+    flex: 0 1 auto;
+    max-width: 100%;
   }
 }
 
@@ -627,7 +646,7 @@ button.game-card:hover:not(:disabled) {
   }
 
   .game-board-content {
-    grid-template-columns: minmax(0, 1fr) 360px;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 400px);
   }
 
   .player-status-panel {

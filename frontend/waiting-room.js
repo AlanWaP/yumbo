@@ -21,7 +21,7 @@
     function renderExistingGames() {
       existingGamesList.innerHTML = "";
 
-      const lobbyGames = getLobbyGames().filter((game) => game.gameType === "power_defense_wave");
+      const lobbyGames = getLobbyGames();
       if (lobbyGames.length === 0) {
         const emptyMessage = document.createElement("p");
         emptyMessage.className = "empty-list";

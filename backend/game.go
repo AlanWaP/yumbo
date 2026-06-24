@@ -61,12 +61,15 @@ func (g *gameSession) MarshalJSON() ([]byte, error) {
 }
 
 type gamePlayer struct {
-	ID            string `json:"id"`
-	TeamID        string `json:"teamId"`
-	Health        int    `json:"health"`
-	Power         int    `json:"power"`
-	DefenseStreak int    `json:"defenseStreak"`
-	Alive         bool   `json:"alive"`
+	ID            string         `json:"id"`
+	TeamID        string         `json:"teamId"`
+	Health        int            `json:"health"`
+	Power         int            `json:"power"`
+	DefenseStreak int            `json:"defenseStreak"`
+	UsageStreaks  map[string]int `json:"usageStreaks,omitempty"`
+	BannedMoves   []string       `json:"bannedMoves,omitempty"`
+	MoveUses      map[string]int `json:"moveUses,omitempty"`
+	Alive         bool           `json:"alive"`
 }
 
 type submittedMove struct {
@@ -111,16 +114,22 @@ func defaultGameRules() gameRules {
 
 func gameRulesForType(gameType string) gameRules {
 	rules := defaultGameRules()
-	if gameType == gameTypePowerDefenseWave {
+	switch gameType {
+	case gameTypePowerDefenseWave:
 		return applyPowerDefenseWaveRules(rules)
+	case gameTypeChaosOfTheBabyCity:
+		return applyChaosOfTheBabyCityRules(rules)
 	}
 	return rules
 }
 
 func moveCatalogForType(gameType string, rules gameRules) []combat.MoveCatalogEntry {
 	definition := games.Generic
-	if gameType == gameTypePowerDefenseWave {
+	switch gameType {
+	case gameTypePowerDefenseWave:
 		definition = games.PowerDefenseWave
+	case gameTypeChaosOfTheBabyCity:
+		definition = games.ChaosOfTheBabyCity
 	}
 
 	entries := combat.BuildMoveCatalog(definition)
@@ -270,8 +279,11 @@ func (g *gameSession) cancelMove(playerID string) (*gameMoveReceipt, error) {
 }
 
 func (g *gameSession) validateMove(currentPlayer *gamePlayer, move submittedMove) error {
-	if g.GameType == gameTypePowerDefenseWave {
+	switch g.GameType {
+	case gameTypePowerDefenseWave:
 		return g.validatePowerDefenseWaveMove(currentPlayer, move)
+	case gameTypeChaosOfTheBabyCity:
+		return g.validateChaosOfTheBabyCityMove(currentPlayer, move)
 	}
 
 	switch move.Type {
@@ -301,8 +313,12 @@ func (g *gameSession) validateMove(currentPlayer *gamePlayer, move submittedMove
 }
 
 func (g *gameSession) resolveRound() {
-	if g.GameType == gameTypePowerDefenseWave {
+	switch g.GameType {
+	case gameTypePowerDefenseWave:
 		g.resolvePowerDefenseWaveRound()
+		return
+	case gameTypeChaosOfTheBabyCity:
+		g.resolveChaosOfTheBabyCityRound()
 		return
 	}
 

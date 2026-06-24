@@ -9,6 +9,7 @@ type GameDefinition struct {
 	Interactions            []InteractionRule
 	Counters                []CounterRule
 	VulnerableWhileCharging []string
+	VulnerableWhileUsing    []string
 }
 
 type RoundInput struct {
@@ -40,6 +41,10 @@ func ValidateMove(
 	spec, ok := def.Moves[move.MoveID]
 	if !ok {
 		return fmt.Errorf("unknown move type: %s", move.MoveID)
+	}
+
+	if containsMoveID(combatant.BannedMoves, move.MoveID) {
+		return fmt.Errorf("move %q is sealed and cannot be used", move.MoveID)
 	}
 
 	if err := combatant.Usage.CanUse(move.MoveID, spec.UsageLimit); err != nil {
@@ -115,11 +120,16 @@ func (def *GameDefinition) ResolveRound(input RoundInput) RoundOutput {
 		})
 	}
 
-	attacks := def.expandAttacks(moves, input)
-	immunities := def.applyCounters(moves, output)
+	nullified, invulnerable := def.applySeals(moves, input, output)
+	attacks := def.expandAttacks(moves, input, nullified)
+	immunities := def.applyCounters(moves, output, nullified)
 	incoming := groupAttacksByTarget(attacks)
+	def.applyAbsorbGains(moves, incoming, nullified, input, output, immunities)
 
 	for playerID, move := range moves {
+		if invulnerable[playerID] {
+			continue
+		}
 		reason := def.eliminationReason(move, incoming[playerID], immunities, output.Eliminated)
 		if reason == "" {
 			continue
@@ -143,10 +153,63 @@ func (def *GameDefinition) ResolveRound(input RoundInput) RoundOutput {
 	return output
 }
 
-func (def *GameDefinition) expandAttacks(moves map[string]SubmittedMove, input RoundInput) []AttackInstance {
+func (def *GameDefinition) applySeals(
+	moves map[string]SubmittedMove,
+	input RoundInput,
+	output RoundOutput,
+) (nullified map[string]bool, invulnerable map[string]bool) {
+	nullified = map[string]bool{}
+	invulnerable = map[string]bool{}
+
+	for _, move := range moves {
+		spec, ok := def.Moves[move.MoveID]
+		if !ok || spec.Category != MoveSeal || spec.SealSpec == nil {
+			continue
+		}
+
+		targetMove, ok := moves[move.TargetID]
+		if !ok {
+			continue
+		}
+		if spec.SealSpec.ImmuneIfTargetUses != "" && targetMove.MoveID == spec.SealSpec.ImmuneIfTargetUses {
+			continue
+		}
+
+		invulnerable[move.TargetID] = true
+		nullified[move.TargetID] = true
+
+		output.Events = append(output.Events, RoundEvent{
+			PlayerID: move.PlayerID,
+			MoveID:   move.MoveID,
+			TargetID: move.TargetID,
+			Message:  fmt.Sprintf("sealed %s's %s", move.TargetID, targetMove.MoveID),
+		})
+
+		if spec.SealSpec.NoBanIfTargetUses != "" && targetMove.MoveID == spec.SealSpec.NoBanIfTargetUses {
+			continue
+		}
+
+		combatant := input.Combatants[move.TargetID]
+		if combatant == nil || containsMoveID(combatant.BannedMoves, targetMove.MoveID) {
+			continue
+		}
+		combatant.BannedMoves = append(combatant.BannedMoves, targetMove.MoveID)
+	}
+
+	return nullified, invulnerable
+}
+
+func (def *GameDefinition) expandAttacks(
+	moves map[string]SubmittedMove,
+	input RoundInput,
+	nullified map[string]bool,
+) []AttackInstance {
 	attacks := []AttackInstance{}
 
 	for playerID, move := range moves {
+		if nullified[playerID] {
+			continue
+		}
 		spec := def.Moves[move.MoveID]
 		if spec.Category != MoveAttack || spec.CounterOnly {
 			continue
@@ -191,11 +254,18 @@ func (def *GameDefinition) expandAttacks(moves map[string]SubmittedMove, input R
 func (def *GameDefinition) applyCounters(
 	moves map[string]SubmittedMove,
 	output RoundOutput,
+	nullified map[string]bool,
 ) map[string]map[string]bool {
 	immunities := map[string]map[string]bool{}
 
 	for counterID, counterMove := range moves {
+		if nullified[counterID] {
+			continue
+		}
 		for targetID, targetMove := range moves {
+			if nullified[targetID] {
+				continue
+			}
 			for _, rule := range def.Counters {
 				if counterMove.MoveID != rule.CounterMove || targetMove.MoveID != rule.TargetMove {
 					continue
@@ -218,6 +288,41 @@ func (def *GameDefinition) applyCounters(
 	}
 
 	return immunities
+}
+
+func (def *GameDefinition) applyAbsorbGains(
+	moves map[string]SubmittedMove,
+	incoming map[string][]AttackInstance,
+	nullified map[string]bool,
+	input RoundInput,
+	output RoundOutput,
+	immunities map[string]map[string]bool,
+) {
+	for playerID, move := range moves {
+		if nullified[playerID] {
+			continue
+		}
+		spec := def.Moves[move.MoveID]
+		if !spec.GainEnergyFromAttackCost || len(spec.BlocksAttacks) == 0 {
+			continue
+		}
+
+		combatant := input.Combatants[playerID]
+		playerIncoming := incoming[playerID]
+		unblocked := filterUnblockedAttacks(playerIncoming, immunities[playerID])
+
+		for _, attack := range unblocked {
+			if !blocksAttack(spec, attack.MoveID) {
+				continue
+			}
+			if !def.isAttackBlocked(attack, move, playerIncoming) {
+				continue
+			}
+			attackSpec := def.Moves[attack.MoveID]
+			combatant.Energy += attackSpec.EnergyCost
+			output.EnergyGained[playerID] += attackSpec.EnergyCost
+		}
+	}
 }
 
 func (def *GameDefinition) eliminationReason(
@@ -244,20 +349,20 @@ func (def *GameDefinition) eliminationReason(
 		return "powered up while attacked"
 	}
 
-	if spec.Category == MoveDefend {
+	if containsMoveID(def.VulnerableWhileUsing, move.MoveID) {
+		return vulnerableWhileUsingReason(move.MoveID)
+	}
+
+	if spec.ImmuneWhileUsing {
+		return ""
+	}
+
+	if spec.Category == MoveDefend && len(spec.BlocksAttacks) == 0 {
 		superBlastCount := countAttacks(unblocked, "super_blast")
 		if superBlastCount >= 2 {
 			return "defense was broken by multiple super blasts"
 		}
 		return ""
-	}
-
-	if move.MoveID == "super_blast" {
-		return ""
-	}
-
-	if move.MoveID == "air_cannon" {
-		return "attacked while using air cannon"
 	}
 
 	for _, attack := range unblocked {
@@ -288,11 +393,22 @@ func (def *GameDefinition) isAttackBlocked(
 	}
 
 	defenderSpec := def.Moves[defenderMove.MoveID]
-	if defenderSpec.Category == MoveDefend {
+	if blocksAttack(defenderSpec, attack.MoveID) {
+		return true
+	}
+
+	if defenderSpec.Category == MoveDefend && len(defenderSpec.BlocksAttacks) == 0 {
 		return true
 	}
 
 	return false
+}
+
+func blocksAttack(spec MoveSpec, attackMoveID string) bool {
+	if len(spec.BlocksAttacks) == 0 {
+		return false
+	}
+	return containsMoveID(spec.BlocksAttacks, attackMoveID)
 }
 
 func (def *GameDefinition) hitReason(attack AttackInstance, defenderMove SubmittedMove) string {
@@ -304,16 +420,57 @@ func (def *GameDefinition) hitReason(attack AttackInstance, defenderMove Submitt
 		if attack.MoveID == "wave" {
 			return "wave did not offset incoming wave"
 		}
+	case "prick":
+		if attack.MoveID == "detonation" {
+			return "prick was overpowered by detonation"
+		}
+		if attack.MoveID == "visa_ray" {
+			return "prick was overpowered by visa ray"
+		}
+		if attack.MoveID == "clang_clang" {
+			return "prick was overpowered by clang clang"
+		}
+		if attack.MoveID == "prick" {
+			return "prick did not offset incoming prick"
+		}
+	case "clang_clang":
+		switch attack.MoveID {
+		case "detonation":
+			return "clang clang was overpowered by detonation"
+		case "visa_ray":
+			return "clang clang was overpowered by visa ray"
+		}
+	case "visa_ray":
+		if attack.MoveID == "detonation" {
+			return "visa ray was overpowered by detonation"
+		}
 	}
 	return "attacked"
 }
 
+func vulnerableWhileUsingReason(moveID string) string {
+	switch moveID {
+	case "air_cannon":
+		return "attacked while using air cannon"
+	case "knife":
+		return "attacked while using knife"
+	default:
+		return "attacked while using " + moveID
+	}
+}
+
 func (def *GameDefinition) actionMessage(move SubmittedMove, spec MoveSpec) string {
+	if spec.ActionMessage != "" {
+		return spec.ActionMessage
+	}
+
 	switch spec.Category {
 	case MoveGainEnergy:
 		return fmt.Sprintf("gained %d power", spec.EnergyGain)
 	case MoveDefend:
 		return "defended"
+	case MoveSeal:
+		return "used seal"
 	case MoveAttack:
 		switch spec.TargetScope {
 		case TargetSingleEnemy:

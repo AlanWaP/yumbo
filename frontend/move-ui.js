@@ -32,8 +32,19 @@
     if (requiresTargetPlayer(entry) && !hasTargets) {
       return true;
     }
-    if (entry.id === "defense" && (player.defenseStreak || 0) >= 2) {
+    if (Array.isArray(player.bannedMoves) && player.bannedMoves.includes(entry.id)) {
       return true;
+    }
+    if (entry.maxUsesPerGame > 0 && (player.moveUses?.[entry.id] || 0) >= entry.maxUsesPerGame) {
+      return true;
+    }
+    if (entry.maxConsecutive > 0) {
+      const streak =
+        player.usageStreaks?.[entry.id] ??
+        (entry.id === "defense" ? player.defenseStreak ?? 0 : 0);
+      if (streak >= entry.maxConsecutive) {
+        return true;
+      }
     }
     return false;
   }

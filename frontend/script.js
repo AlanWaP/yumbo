@@ -20,7 +20,7 @@ const existingGamesList = document.querySelector("#existing-games-list");
 const gameFrame = document.querySelector("#game-frame");
 const { t } = window.yumboI18n;
 
-const gameTypes = new Set(["power_defense_wave"]);
+const gameTypes = new Set(["power_defense_wave", "chaos_of_the_baby_city"]);
 const PLAYER_ID_STORAGE_KEY = "yumboPlayerId";
 const playerIdPattern = /^player_[0-9a-f]{8}$/;
 

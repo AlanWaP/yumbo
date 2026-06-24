@@ -287,6 +287,60 @@
         for (const section of sections) {
           ruleFrame.append(createRuleSection(section.title, section.items));
         }
+      } else if (gameState.gameType === "chaos_of_the_baby_city") {
+        const sections = [
+          {
+            title: t("rules.roundFlow"),
+            items: [
+              t("rules.allAliveChoose"),
+              t("rules.simultaneous"),
+              t("rules.survival"),
+              t("rules.ends"),
+            ],
+          },
+          {
+            title: t("rules.power"),
+            items: [
+              t("rules.gainPower", { amount: gameState.rules.gainPowerAmount }),
+              t("rules.powerNoTarget"),
+              t("rules.babyCity.powerEliminated"),
+            ],
+          },
+          {
+            title: t("rules.babyCity.attacks"),
+            items: [
+              t("rules.babyCity.prick"),
+              t("rules.babyCity.clangClang"),
+              t("rules.babyCity.visaRay"),
+              t("rules.babyCity.detonation"),
+              t("rules.babyCity.attackLadder"),
+            ],
+          },
+          {
+            title: t("rules.babyCity.defenses"),
+            items: [
+              t("rules.babyCity.defense"),
+              t("rules.babyCity.coverEar"),
+              t("rules.babyCity.vSign"),
+              t("rules.babyCity.absorb"),
+              t("rules.babyCity.knife"),
+            ],
+          },
+          {
+            title: t("rules.babyCity.seal"),
+            items: [
+              t("rules.babyCity.sealOnce"),
+              t("rules.babyCity.sealNullify"),
+              t("rules.babyCity.sealInvulnerable"),
+              t("rules.babyCity.sealPower"),
+              t("rules.babyCity.sealDetonation"),
+            ],
+          },
+        ];
+
+        for (const section of sections) {
+          ruleFrame.append(createRuleSection(section.title, section.items));
+        }
       } else {
         ruleFrame.append(
           createRuleSection(t("rules.basic"), [
@@ -359,12 +413,21 @@
 
       const messages = {
         "aimed air cannon": "result.aimedAirCannon",
+        absorbed: "result.absorbed",
         attacked: "result.attacked",
         "attack blocked": "result.attackBlocked",
         "attack eliminated target": "result.attackEliminatedTarget",
+        "covered ears": "result.coveredEars",
         defended: "result.defended",
+        "made a V sign": "result.madeVSign",
         "sent a wave": "result.sentWave",
+        "used clang clang": "result.usedClangClang",
+        "used detonation": "result.usedDetonation",
+        "used knife": "result.usedKnife",
+        "used prick": "result.usedPrick",
+        "used seal": "result.usedSeal",
         "used super blast": "result.usedSuperBlast",
+        "used visa ray": "result.usedVisaRay",
       };
 
       return messages[message] ? t(messages[message]) : message;
@@ -376,10 +439,23 @@
         return t("reason.hitByAirCannon", { player: airCannonMatch[1] });
       }
 
+      const knifeMatch = /^hit by (.+)'s knife$/.exec(reason);
+      if (knifeMatch) {
+        return t("reason.hitByKnife", { player: knifeMatch[1] });
+      }
+
       const reasons = {
         "attacked while using air cannon": "reason.attackedWithAirCannon",
+        "attacked while using knife": "reason.attackedWithKnife",
+        "clang clang was overpowered by detonation": "reason.clangOverpoweredByDetonation",
+        "clang clang was overpowered by visa_ray": "reason.clangOverpoweredByVisaRay",
         "defense was broken by multiple super blasts": "reason.defenseBroken",
         "powered up while attacked": "reason.poweredUpWhileAttacked",
+        "prick did not offset incoming prick": "reason.prickDidNotOffset",
+        "prick was overpowered by clang clang": "reason.prickOverpoweredByClang",
+        "prick was overpowered by detonation": "reason.prickOverpoweredByDetonation",
+        "prick was overpowered by visa ray": "reason.prickOverpoweredByVisaRay",
+        "visa ray was overpowered by detonation": "reason.visaRayOverpoweredByDetonation",
         "wave did not offset incoming wave": "reason.waveDidNotOffset",
         "wave was overpowered by super blast": "reason.waveOverpowered",
       };
