@@ -108,22 +108,6 @@ func (h *hub) sendSessionRestore(currentPlayer *player) {
 }
 
 func (h *hub) appendSessionRestoreLocked(currentPlayer *player, messages *[]outboundMessage) {
-	if currentPlayer.queueKey != "" && h.isQueuedLocked(currentPlayer.id, currentPlayer.queueKey) {
-		*messages = append(*messages, outboundMessage{
-			player: currentPlayer,
-			body: serverMessage{
-				Type:        "already_queued",
-				PlayerID:    currentPlayer.id,
-				GameType:    currentPlayer.gameType,
-				GameMode:    currentPlayer.gameMode,
-				TeamCount:   currentPlayer.teamCount,
-				PlayerCount: currentPlayer.playerCount,
-				Restored:    true,
-			},
-		})
-		return
-	}
-
 	currentRoom := h.rooms[currentPlayer.roomID]
 	if currentRoom == nil {
 		currentPlayer.roomID = ""
@@ -131,11 +115,28 @@ func (h *hub) appendSessionRestoreLocked(currentPlayer *player, messages *[]outb
 		currentPlayer.gameMode = ""
 		currentPlayer.teamCount = 0
 		currentPlayer.playerCount = 0
-		currentPlayer.queueKey = ""
 		return
 	}
 
 	players := append([]string(nil), currentRoom.playerIDs...)
+	if currentRoom.game == nil {
+		*messages = append(*messages, outboundMessage{
+			player: currentPlayer,
+			body: serverMessage{
+				Type:        "room_waiting",
+				PlayerID:    currentPlayer.id,
+				RoomID:      currentRoom.id,
+				GameType:    currentRoom.gameType,
+				GameMode:    currentRoom.gameMode,
+				TeamCount:   currentRoom.teamCount,
+				PlayerCount: currentRoom.playerCount,
+				Players:     players,
+				Restored:    true,
+			},
+		})
+		return
+	}
+
 	*messages = append(*messages, outboundMessage{
 		player: currentPlayer,
 		body: serverMessage{
@@ -208,7 +209,7 @@ func (h *hub) expirePlayerSession(playerID string) {
 	h.cancelPlayerCleanupLocked(currentPlayer)
 
 	if currentPlayer.queueKey != "" {
-		h.removeFromQueueLocked(currentPlayer.id, currentPlayer.queueKey)
+		currentPlayer.queueKey = ""
 	}
 	h.leaveRoomLocked(currentPlayer, "session_expired", &messages)
 	currentPlayer.gameType = ""

@@ -357,6 +357,11 @@ function handleServerMessage(rawMessage) {
     return;
   }
 
+  if (message.type === "room_waiting") {
+    applyRoomWaitingState(message);
+    return;
+  }
+
   if (message.type === "room_created") {
     applyRoomState(message);
     return;
@@ -509,6 +514,29 @@ function applyQueuedState(message) {
   leaveRoomButton.hidden = true;
 }
 
+function applyRoomWaitingState(message) {
+  playerId = message.playerId || playerId;
+  storePlayerId(playerId);
+  gameType = message.gameType;
+  gameMode = message.gameMode;
+  playerCount = message.playerCount;
+  roomId = message.roomId;
+  isQueued = false;
+  currentGameState = undefined;
+  clearSubmittedMoveState();
+  updateLabels();
+  const joinedCount = Array.isArray(message.players) ? message.players.length : 0;
+  if (message.restored) {
+    setStatus("status.sessionRestoredWaitingRoom", { joined: joinedCount, total: playerCount });
+  } else {
+    setStatus("status.waitingInRoom", { joined: joinedCount, total: playerCount });
+  }
+  showWaitingRoom();
+  joinQueueButton.hidden = false;
+  leaveQueueButton.hidden = true;
+  leaveRoomButton.hidden = false;
+}
+
 function applyRoomState(message) {
   playerId = message.playerId || playerId;
   storePlayerId(playerId);
@@ -534,12 +562,14 @@ function applyRoomState(message) {
 }
 
 function joinQueue(gameToJoin) {
-  const requestedGameType = gameToJoin?.gameType || gameTypeInput.value;
-  const requestedGameMode = gameToJoin?.gameMode || gameModeInput.value;
-  const requestedPlayerCount = Number.parseInt(
-    gameToJoin?.playerCount || playerCountInput.value,
-    10
-  );
+  if (gameToJoin) {
+    joinExistingRoom(gameToJoin);
+    return;
+  }
+
+  const requestedGameType = gameTypeInput.value;
+  const requestedGameMode = gameModeInput.value;
+  const requestedPlayerCount = Number.parseInt(playerCountInput.value, 10);
 
   if (!socket || socket.readyState !== WebSocket.OPEN) {
     setStatus("status.connectFirst");
@@ -570,19 +600,53 @@ function joinQueue(gameToJoin) {
   gameMode = requestedGameMode;
   playerCount = requestedPlayerCount;
   roomId = undefined;
-  isQueued = true;
+  isQueued = false;
   updateLabels();
   send({
-    type: "join_queue",
+    type: "create_game",
     gameType: requestedGameType,
     gameMode: requestedGameMode,
     playerCount: requestedPlayerCount,
   });
-  setStatus(gameToJoin ? "status.joiningSelected" : "status.creatingGame");
+  setStatus("status.creatingGame");
   showWaitingRoom();
   joinQueueButton.hidden = true;
-  leaveQueueButton.hidden = false;
-  leaveRoomButton.hidden = true;
+  leaveQueueButton.hidden = true;
+  leaveRoomButton.hidden = false;
+}
+
+function joinExistingRoom(gameToJoin) {
+  if (!socket || socket.readyState !== WebSocket.OPEN) {
+    setStatus("status.connectFirst");
+    return;
+  }
+
+  if (!gameToJoin?.id) {
+    setStatus("status.enterGameType");
+    return;
+  }
+
+  localStorage.setItem("yumboGameType", gameToJoin.gameType);
+  localStorage.setItem("yumboGameMode", gameToJoin.gameMode || "free_for_all");
+  localStorage.setItem("yumboPlayerCount", String(gameToJoin.playerCount));
+  gameTypeInput.value = gameToJoin.gameType;
+  gameModeInput.value = gameToJoin.gameMode || "free_for_all";
+  playerCountInput.value = String(gameToJoin.playerCount);
+  gameType = gameToJoin.gameType;
+  gameMode = gameToJoin.gameMode;
+  playerCount = gameToJoin.playerCount;
+  roomId = undefined;
+  isQueued = false;
+  updateLabels();
+  send({
+    type: "join_room",
+    roomId: gameToJoin.id,
+  });
+  setStatus("status.joiningSelected");
+  showWaitingRoom();
+  joinQueueButton.hidden = true;
+  leaveQueueButton.hidden = true;
+  leaveRoomButton.hidden = false;
 }
 
 function requestLobby() {

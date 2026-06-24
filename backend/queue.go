@@ -2,12 +2,12 @@ package main
 
 import "fmt"
 
-func (h *hub) joinQueue(currentPlayer *player, gameType string, requestedGameMode string, requestedTeamCount int, requestedPlayerCount int) {
+func (h *hub) createGame(currentPlayer *player, gameType string, requestedGameMode string, requestedTeamCount int, requestedPlayerCount int) {
 	h.mu.Lock()
 	var messages []outboundMessage
 
 	if gameType == "" {
-		messages = append(messages, errorMessage(currentPlayer, "gameType is required to join a queue."))
+		messages = append(messages, errorMessage(currentPlayer, "gameType is required to create a game."))
 		h.mu.Unlock()
 		flushMessages(messages)
 		return
@@ -34,51 +34,81 @@ func (h *hub) joinQueue(currentPlayer *player, gameType string, requestedGameMod
 		return
 	}
 
-	queueKey := createQueueKey(gameType, gameMode, teamCount, playerCount)
+	if currentPlayer.roomID != "" {
+		h.leaveRoomLocked(currentPlayer, "created_new_room", &messages)
+	}
+
+	h.createWaitingRoomLocked(currentPlayer, gameType, gameMode, teamCount, playerCount, &messages)
+	h.prependLobbyBroadcastLocked(&messages)
+	h.mu.Unlock()
+	flushMessages(messages)
+}
+
+func (h *hub) joinRoom(currentPlayer *player, roomID string) {
+	h.mu.Lock()
+	var messages []outboundMessage
+
+	if roomID == "" {
+		messages = append(messages, errorMessage(currentPlayer, "roomId is required to join a game."))
+		h.mu.Unlock()
+		flushMessages(messages)
+		return
+	}
+
+	currentRoom := h.rooms[roomID]
+	if currentRoom == nil {
+		messages = append(messages, errorMessage(currentPlayer, "That waiting game no longer exists."))
+		h.mu.Unlock()
+		flushMessages(messages)
+		return
+	}
+	if currentRoom.game != nil {
+		messages = append(messages, errorMessage(currentPlayer, "That game has already started."))
+		h.mu.Unlock()
+		flushMessages(messages)
+		return
+	}
+	if len(currentRoom.playerIDs) >= currentRoom.playerCount {
+		messages = append(messages, errorMessage(currentPlayer, "That waiting game is already full."))
+		h.mu.Unlock()
+		flushMessages(messages)
+		return
+	}
+	if containsPlayerID(currentRoom.playerIDs, currentPlayer.id) {
+		messages = append(messages, outboundMessage{
+			player: currentPlayer,
+			body: serverMessage{
+				Type:        "room_waiting",
+				PlayerID:    currentPlayer.id,
+				RoomID:      currentRoom.id,
+				GameType:    currentRoom.gameType,
+				GameMode:    currentRoom.gameMode,
+				TeamCount:   currentRoom.teamCount,
+				PlayerCount: currentRoom.playerCount,
+				Players:     append([]string(nil), currentRoom.playerIDs...),
+			},
+		})
+		h.mu.Unlock()
+		flushMessages(messages)
+		return
+	}
 
 	if currentPlayer.roomID != "" {
-		h.leaveRoomLocked(currentPlayer, "joined_queue", &messages)
+		h.leaveRoomLocked(currentPlayer, "joined_room", &messages)
 	}
 
-	if currentPlayer.queueKey != "" {
-		if currentPlayer.queueKey == queueKey && h.isQueuedLocked(currentPlayer.id, queueKey) {
-			messages = append(messages, outboundMessage{
-				player: currentPlayer,
-				body: serverMessage{
-					Type:        "already_queued",
-					PlayerID:    currentPlayer.id,
-					GameType:    gameType,
-					GameMode:    gameMode,
-					TeamCount:   teamCount,
-					PlayerCount: playerCount,
-				},
-			})
-			h.mu.Unlock()
-			flushMessages(messages)
-			return
-		}
-		h.removeFromQueueLocked(currentPlayer.id, currentPlayer.queueKey)
+	currentRoom.playerIDs = append(currentRoom.playerIDs, currentPlayer.id)
+	currentPlayer.roomID = currentRoom.id
+	currentPlayer.gameType = currentRoom.gameType
+	currentPlayer.gameMode = currentRoom.gameMode
+	currentPlayer.teamCount = currentRoom.teamCount
+	currentPlayer.playerCount = currentRoom.playerCount
+
+	if len(currentRoom.playerIDs) == currentRoom.playerCount {
+		h.startRoomLocked(currentRoom, &messages)
+	} else {
+		h.appendRoomWaitingMessagesLocked(currentRoom, &messages)
 	}
-
-	currentPlayer.gameType = gameType
-	currentPlayer.gameMode = gameMode
-	currentPlayer.teamCount = teamCount
-	currentPlayer.playerCount = playerCount
-	currentPlayer.queueKey = queueKey
-	h.queues[queueKey] = append(h.queues[queueKey], currentPlayer.id)
-	messages = append(messages, outboundMessage{
-		player: currentPlayer,
-		body: serverMessage{
-			Type:        "queued",
-			PlayerID:    currentPlayer.id,
-			GameType:    gameType,
-			GameMode:    gameMode,
-			TeamCount:   teamCount,
-			PlayerCount: playerCount,
-		},
-	})
-
-	h.matchQueuedPlayersLocked(queueKey, &messages)
 
 	h.prependLobbyBroadcastLocked(&messages)
 	h.mu.Unlock()
@@ -89,108 +119,107 @@ func (h *hub) leaveQueue(currentPlayer *player) {
 	h.mu.Lock()
 	var messages []outboundMessage
 
-	if currentPlayer.queueKey == "" || !h.removeFromQueueLocked(currentPlayer.id, currentPlayer.queueKey) {
-		messages = append(messages, outboundMessage{
-			player: currentPlayer,
-			body:   serverMessage{Type: "not_queued"},
-		})
-		h.mu.Unlock()
-		flushMessages(messages)
-		return
+	if currentPlayer.roomID != "" {
+		currentRoom := h.rooms[currentPlayer.roomID]
+		if currentRoom != nil && currentRoom.game == nil {
+			h.leaveRoomLocked(currentPlayer, "left_waiting_room", &messages)
+			h.prependLobbyBroadcastLocked(&messages)
+			h.mu.Unlock()
+			flushMessages(messages)
+			return
+		}
 	}
 
-	gameType := currentPlayer.gameType
-	gameMode := currentPlayer.gameMode
-	teamCount := currentPlayer.teamCount
-	playerCount := currentPlayer.playerCount
-	currentPlayer.gameType = ""
-	currentPlayer.gameMode = ""
-	currentPlayer.teamCount = 0
-	currentPlayer.playerCount = 0
-	currentPlayer.queueKey = ""
 	messages = append(messages, outboundMessage{
 		player: currentPlayer,
-		body: serverMessage{
-			Type:        "queue_left",
-			PlayerID:    currentPlayer.id,
-			GameType:    gameType,
-			GameMode:    gameMode,
-			TeamCount:   teamCount,
-			PlayerCount: playerCount,
-		},
+		body:   serverMessage{Type: "not_queued"},
 	})
-
-	h.prependLobbyBroadcastLocked(&messages)
 	h.mu.Unlock()
 	flushMessages(messages)
 }
 
-func (h *hub) matchQueuedPlayersLocked(queueKey string, messages *[]outboundMessage) {
-	h.queues[queueKey] = h.compactQueueLocked(queueKey)
-
-	for len(h.queues[queueKey]) > 0 {
-		first := h.players[h.queues[queueKey][0]]
-		if first == nil {
-			h.queues[queueKey] = h.queues[queueKey][1:]
-			continue
-		}
-
-		playerCount := first.playerCount
-		if playerCount <= 0 || len(h.queues[queueKey]) < playerCount {
-			return
-		}
-
-		roomPlayers := make([]*player, 0, playerCount)
-		playerIDs := h.queues[queueKey][:playerCount]
-		h.queues[queueKey] = h.queues[queueKey][playerCount:]
-		for _, playerID := range playerIDs {
-			if currentPlayer := h.players[playerID]; currentPlayer != nil {
-				roomPlayers = append(roomPlayers, currentPlayer)
-			}
-		}
-
-		if len(roomPlayers) != playerCount {
-			h.queues[queueKey] = h.compactQueueLocked(queueKey)
-			continue
-		}
-
-		h.createRoomLocked(first.gameType, first.gameMode, first.teamCount, playerCount, roomPlayers, messages)
+func (h *hub) createWaitingRoomLocked(
+	currentPlayer *player,
+	gameType string,
+	gameMode string,
+	teamCount int,
+	playerCount int,
+	messages *[]outboundMessage,
+) {
+	roomID := createID("room")
+	currentRoom := &room{
+		id:          roomID,
+		gameType:    gameType,
+		gameMode:    gameMode,
+		teamCount:   teamCount,
+		playerCount: playerCount,
+		playerIDs:   []string{currentPlayer.id},
+		game:        nil,
 	}
+
+	h.rooms[roomID] = currentRoom
+	currentPlayer.roomID = roomID
+	currentPlayer.gameType = gameType
+	currentPlayer.gameMode = gameMode
+	currentPlayer.teamCount = teamCount
+	currentPlayer.playerCount = playerCount
+
+	h.appendRoomWaitingMessagesLocked(currentRoom, messages)
 }
 
-func (h *hub) compactQueueLocked(queueKey string) []string {
-	active := make([]string, 0, len(h.queues[queueKey]))
-	for _, playerID := range h.queues[queueKey] {
+func (h *hub) appendRoomWaitingMessagesLocked(currentRoom *room, messages *[]outboundMessage) {
+	players := append([]string(nil), currentRoom.playerIDs...)
+	for _, playerID := range currentRoom.playerIDs {
 		currentPlayer := h.players[playerID]
-		if currentPlayer != nil && currentPlayer.roomID == "" && currentPlayer.queueKey == queueKey {
-			active = append(active, playerID)
-		}
-	}
-	return active
-}
-
-func (h *hub) removeFromQueueLocked(playerID string, queueKey string) bool {
-	removed := false
-	queue := h.queues[queueKey]
-	filtered := queue[:0]
-	for _, queuedPlayerID := range queue {
-		if queuedPlayerID == playerID {
-			removed = true
+		if currentPlayer == nil || currentPlayer.conn == nil {
 			continue
 		}
-		filtered = append(filtered, queuedPlayerID)
+		*messages = append(*messages, outboundMessage{
+			player: currentPlayer,
+			body: serverMessage{
+				Type:        "room_waiting",
+				PlayerID:    currentPlayer.id,
+				RoomID:      currentRoom.id,
+				GameType:    currentRoom.gameType,
+				GameMode:    currentRoom.gameMode,
+				TeamCount:   currentRoom.teamCount,
+				PlayerCount: currentRoom.playerCount,
+				Players:     players,
+			},
+		})
 	}
-	h.queues[queueKey] = filtered
-	return removed
 }
 
-func (h *hub) isQueuedLocked(playerID string, queueKey string) bool {
-	for _, queuedPlayerID := range h.queues[queueKey] {
-		if queuedPlayerID == playerID {
-			return true
+func (h *hub) startRoomLocked(currentRoom *room, messages *[]outboundMessage) {
+	currentRoom.game = newGameSession(
+		currentRoom.id,
+		currentRoom.gameType,
+		append([]string(nil), currentRoom.playerIDs...),
+		currentRoom.gameMode,
+		currentRoom.teamCount,
+	)
+
+	players := append([]string(nil), currentRoom.playerIDs...)
+	for _, playerID := range currentRoom.playerIDs {
+		currentPlayer := h.players[playerID]
+		if currentPlayer == nil || currentPlayer.conn == nil {
+			continue
 		}
+		*messages = append(*messages, outboundMessage{
+			player: currentPlayer,
+			body: serverMessage{
+				Type:        "room_created",
+				PlayerID:    currentPlayer.id,
+				RoomID:      currentRoom.id,
+				GameType:    currentRoom.gameType,
+				GameMode:    currentRoom.gameMode,
+				TeamCount:   currentRoom.teamCount,
+				PlayerCount: currentRoom.playerCount,
+				Players:     players,
+				Payload:     marshalPayload(currentRoom.game),
+			},
+		})
 	}
-	return false
 }
 
 func normalizePlayerCount(requestedPlayerCount int) int {
@@ -203,9 +232,11 @@ func normalizePlayerCount(requestedPlayerCount int) int {
 	return requestedPlayerCount
 }
 
-func createQueueKey(gameType string, gameMode string, teamCount int, playerCount int) string {
-	if gameMode == "" || gameMode == gameModeFreeForAll {
-		return fmt.Sprintf("%s:%d", gameType, playerCount)
+func containsPlayerID(playerIDs []string, playerID string) bool {
+	for _, candidate := range playerIDs {
+		if candidate == playerID {
+			return true
+		}
 	}
-	return fmt.Sprintf("%s:%d:%s:%d", gameType, playerCount, gameMode, teamCount)
+	return false
 }

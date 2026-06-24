@@ -49,6 +49,7 @@ type room struct {
 
 type clientMessage struct {
 	Type        string          `json:"type"`
+	RoomID      string          `json:"roomId,omitempty"`
 	GameType    string          `json:"gameType,omitempty"`
 	GameMode    string          `json:"gameMode,omitempty"`
 	TeamCount   int             `json:"teamCount,omitempty"`
@@ -93,7 +94,6 @@ type hub struct {
 	mu      sync.Mutex
 	players map[string]*player
 	rooms   map[string]*room
-	queues  map[string][]string
 }
 
 var upgrader = websocket.Upgrader{
@@ -124,7 +124,6 @@ func newHub() *hub {
 	return &hub{
 		players: map[string]*player{},
 		rooms:   map[string]*room{},
-		queues:  map[string][]string{},
 	}
 }
 
@@ -173,8 +172,10 @@ func handleWebSocket(gameHub *hub, w http.ResponseWriter, r *http.Request) {
 
 func (h *hub) handleMessage(currentPlayer *player, message clientMessage) {
 	switch message.Type {
-	case "join_queue":
-		h.joinQueue(currentPlayer, message.GameType, message.GameMode, message.TeamCount, message.PlayerCount)
+	case "create_game":
+		h.createGame(currentPlayer, message.GameType, message.GameMode, message.TeamCount, message.PlayerCount)
+	case "join_room":
+		h.joinRoom(currentPlayer, message.RoomID)
 	case "leave_queue":
 		h.leaveQueue(currentPlayer)
 	case "leave_room":
@@ -335,10 +336,9 @@ func (h *hub) removePlayer(currentPlayer *player) {
 
 	h.cancelPlayerCleanupLocked(currentPlayer)
 
-	if currentPlayer.queueKey != "" {
-		h.removeFromQueueLocked(currentPlayer.id, currentPlayer.queueKey)
+	if currentPlayer.roomID != "" {
+		h.leaveRoomLocked(currentPlayer, "peer_disconnected", &messages)
 	}
-	h.leaveRoomLocked(currentPlayer, "peer_disconnected", &messages)
 	currentPlayer.gameType = ""
 	currentPlayer.gameMode = ""
 	currentPlayer.teamCount = 0
@@ -351,52 +351,6 @@ func (h *hub) removePlayer(currentPlayer *player) {
 	h.mu.Unlock()
 	flushMessages(messages)
 	closeConn(currentPlayer.conn)
-}
-
-func (h *hub) createRoomLocked(gameType string, gameMode string, teamCount int, playerCount int, roomPlayers []*player, messages *[]outboundMessage) {
-	roomID := createID("room")
-	playerIDs := make([]string, 0, len(roomPlayers))
-	for _, currentPlayer := range roomPlayers {
-		playerIDs = append(playerIDs, currentPlayer.id)
-	}
-
-	currentRoom := &room{
-		id:          roomID,
-		gameType:    gameType,
-		gameMode:    gameMode,
-		teamCount:   teamCount,
-		playerCount: playerCount,
-		playerIDs:   playerIDs,
-		game:        newGameSession(roomID, gameType, playerIDs, gameMode, teamCount),
-	}
-
-	h.rooms[roomID] = currentRoom
-	for _, currentPlayer := range roomPlayers {
-		currentPlayer.roomID = roomID
-		currentPlayer.gameType = gameType
-		currentPlayer.gameMode = gameMode
-		currentPlayer.teamCount = teamCount
-		currentPlayer.playerCount = playerCount
-		currentPlayer.queueKey = ""
-	}
-
-	players := append([]string(nil), currentRoom.playerIDs...)
-	for _, currentPlayer := range roomPlayers {
-		*messages = append(*messages, outboundMessage{
-			player: currentPlayer,
-			body: serverMessage{
-				Type:        "room_created",
-				PlayerID:    currentPlayer.id,
-				RoomID:      roomID,
-				GameType:    gameType,
-				GameMode:    gameMode,
-				TeamCount:   teamCount,
-				PlayerCount: playerCount,
-				Players:     players,
-				Payload:     marshalPayload(currentRoom.game),
-			},
-		})
-	}
 }
 
 func (h *hub) leaveRoomLocked(currentPlayer *player, reason string, messages *[]outboundMessage) {
@@ -412,11 +366,15 @@ func (h *hub) leaveRoomLocked(currentPlayer *player, reason string, messages *[]
 	gameMode := currentRoom.gameMode
 	teamCount := currentRoom.teamCount
 	playerCount := currentRoom.playerCount
-	gamePayload := marshalPayload(currentRoom.game)
+	var gamePayload json.RawMessage
+	waitingRoom := currentRoom.game == nil
 
-	if currentRoom.game != nil && currentRoom.game.Phase != gamePhaseFinished {
-		currentRoom.game.finishDueToPlayerDeparture(departingPlayerID)
+	if !waitingRoom {
 		gamePayload = marshalPayload(currentRoom.game)
+		if currentRoom.game.Phase != gamePhaseFinished {
+			currentRoom.game.finishDueToPlayerDeparture(departingPlayerID)
+			gamePayload = marshalPayload(currentRoom.game)
+		}
 	}
 
 	currentRoom.playerIDs = removePlayerID(currentRoom.playerIDs, departingPlayerID)
@@ -444,26 +402,32 @@ func (h *hub) leaveRoomLocked(currentPlayer *player, reason string, messages *[]
 	currentPlayer.playerCount = 0
 	currentPlayer.queueKey = ""
 
-	for _, playerID := range currentRoom.playerIDs {
-		roomPlayer := h.players[playerID]
-		if roomPlayer == nil || roomPlayer.conn == nil {
-			continue
+	if waitingRoom {
+		if len(currentRoom.playerIDs) > 0 {
+			h.appendRoomWaitingMessagesLocked(currentRoom, messages)
 		}
+	} else {
+		for _, playerID := range currentRoom.playerIDs {
+			roomPlayer := h.players[playerID]
+			if roomPlayer == nil || roomPlayer.conn == nil {
+				continue
+			}
 
-		*messages = append(*messages, outboundMessage{
-			player: roomPlayer,
-			body: serverMessage{
-				Type:        "peer_left",
-				PlayerID:    departingPlayerID,
-				RoomID:      roomID,
-				GameType:    gameType,
-				GameMode:    gameMode,
-				TeamCount:   teamCount,
-				PlayerCount: playerCount,
-				Reason:      reason,
-				Payload:     gamePayload,
-			},
-		})
+			*messages = append(*messages, outboundMessage{
+				player: roomPlayer,
+				body: serverMessage{
+					Type:        "peer_left",
+					PlayerID:    departingPlayerID,
+					RoomID:      roomID,
+					GameType:    gameType,
+					GameMode:    gameMode,
+					TeamCount:   teamCount,
+					PlayerCount: playerCount,
+					Reason:      reason,
+					Payload:     gamePayload,
+				},
+			})
+		}
 	}
 
 	if len(currentRoom.playerIDs) == 0 {
@@ -510,38 +474,18 @@ func (h *hub) prependLobbyBroadcastLocked(messages *[]outboundMessage) {
 }
 
 func (h *hub) gameSummariesLocked() []gameSummary {
-	games := make([]gameSummary, 0, len(h.queues)+len(h.rooms))
-
-	for queueKey := range h.queues {
-		h.queues[queueKey] = h.compactQueueLocked(queueKey)
-		queue := h.queues[queueKey]
-		if len(queue) == 0 {
-			continue
-		}
-
-		firstPlayer := h.players[queue[0]]
-		if firstPlayer == nil {
-			continue
-		}
-
-		players := append([]string(nil), queue...)
-		games = append(games, gameSummary{
-			ID:                queueKey,
-			Status:            "waiting",
-			GameType:          firstPlayer.gameType,
-			GameMode:          firstPlayer.gameMode,
-			TeamCount:         firstPlayer.teamCount,
-			PlayerCount:       firstPlayer.playerCount,
-			JoinedPlayerCount: len(players),
-			Players:           players,
-		})
-	}
+	games := make([]gameSummary, 0, len(h.rooms))
 
 	for _, currentRoom := range h.rooms {
+		status := "started"
+		if currentRoom.game == nil {
+			status = "waiting"
+		}
+
 		players := append([]string(nil), currentRoom.playerIDs...)
 		games = append(games, gameSummary{
 			ID:                currentRoom.id,
-			Status:            "started",
+			Status:            status,
 			GameType:          currentRoom.gameType,
 			GameMode:          currentRoom.gameMode,
 			TeamCount:         currentRoom.teamCount,
