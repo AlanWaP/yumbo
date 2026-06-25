@@ -2,7 +2,9 @@
   function createWaitingRoom({
     panel,
     existingGamesList,
+    lobbyRulesContent,
     getLobbyGames,
+    getSelectedGameType,
     isConnected,
     joinGame,
     formatGameType,
@@ -74,9 +76,23 @@
       }
     }
 
+    function renderLobbyRules() {
+      if (!lobbyRulesContent) {
+        return;
+      }
+
+      const gameType = getSelectedGameType();
+      window.yumboGameRules.renderGameRules(lobbyRulesContent, {
+        gameType,
+        rules: window.yumboGameRules.defaultRulesForGameType(gameType),
+        t,
+      });
+    }
+
     return {
       hide,
       renderExistingGames,
+      renderLobbyRules,
       show,
     };
   }

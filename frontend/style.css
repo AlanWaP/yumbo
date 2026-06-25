@@ -186,6 +186,37 @@ h1 {
   font-size: 0.92rem;
 }
 
+.lobby-rules {
+  margin-top: 16px;
+}
+
+.lobby-rules summary {
+  cursor: pointer;
+  color: #3a63f3;
+  font-size: 0.95rem;
+  font-weight: 700;
+  list-style: none;
+}
+
+.lobby-rules summary::-webkit-details-marker {
+  display: none;
+}
+
+.lobby-rules summary::before {
+  content: "▸ ";
+  display: inline-block;
+  transition: transform 0.15s ease;
+}
+
+.lobby-rules[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.lobby-rules-content {
+  margin-top: 12px;
+  max-height: 280px;
+}
+
 .existing-games {
   margin-top: 22px;
   padding-top: 18px;

@@ -98,6 +98,10 @@
             Create a waiting game or join an existing one. The game screen appears
             only after the match starts.
           </p>
+          <details class="lobby-rules">
+            <summary data-i18n="lobby.viewRules">View rules for the selected game</summary>
+            <div id="lobby-rules-content" class="game-rule-frame lobby-rules-content"></div>
+          </details>
           <section class="existing-games" aria-labelledby="existing-games-title">
             <div class="existing-games-header">
               <h2 id="existing-games-title" data-i18n="lobby.existingGames">Existing games</h2>
@@ -127,9 +131,10 @@
     </main>
 
     <script src="i18n.js?v=move-catalog-1"></script>
+    <script src="game-rules.js?v=move-catalog-3"></script>
     <script src="move-ui.js?v=move-catalog-2"></script>
-    <script src="waiting-room.js?v=move-catalog-1"></script>
-    <script src="game-screen.js?v=move-catalog-1"></script>
-    <script src="script.js?v=move-catalog-1"></script>
+    <script src="waiting-room.js?v=move-catalog-3"></script>
+    <script src="game-screen.js?v=move-catalog-3"></script>
+    <script src="script.js?v=move-catalog-3"></script>
   </body>
 </html>

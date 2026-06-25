@@ -100,7 +100,9 @@ if (reloadIntent && navigationEntry?.type === "reload") {
 const waitingRoom = window.createWaitingRoom({
   panel: lobbyPanel,
   existingGamesList,
+  lobbyRulesContent: document.querySelector("#lobby-rules-content"),
   getLobbyGames: () => lobbyGames,
+  getSelectedGameType: () => gameTypeInput.value,
   isConnected: () => socket && socket.readyState === WebSocket.OPEN,
   joinGame: joinQueue,
   formatGameType,
@@ -145,6 +147,7 @@ updatePlayerCountOptions();
 refreshStatus();
 updateLabels();
 renderExistingGames();
+waitingRoom.renderLobbyRules();
 
 if (defaultServerUrl) {
   connect(defaultServerUrl);
@@ -158,6 +161,10 @@ serverUrlInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     connect(serverUrlInput.value.trim());
   }
+});
+
+gameTypeInput.addEventListener("change", () => {
+  waitingRoom.renderLobbyRules();
 });
 
 gameTypeInput.addEventListener("keydown", (event) => {
@@ -202,6 +209,7 @@ window.yumboI18n.onLanguageChange(() => {
   refreshStatus();
   updateLabels();
   renderExistingGames();
+  waitingRoom.renderLobbyRules();
   renderGameState(currentGameState);
 });
 
@@ -632,6 +640,7 @@ function joinExistingRoom(gameToJoin) {
   gameTypeInput.value = gameToJoin.gameType;
   gameModeInput.value = gameToJoin.gameMode || "free_for_all";
   playerCountInput.value = String(gameToJoin.playerCount);
+  waitingRoom.renderLobbyRules();
   gameType = gameToJoin.gameType;
   gameMode = gameToJoin.gameMode;
   playerCount = gameToJoin.playerCount;
