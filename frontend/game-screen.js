@@ -299,41 +299,92 @@
             ],
           },
           {
-            title: t("rules.power"),
+            title: t("move.power"),
             items: [
-              t("rules.gainPower", { amount: gameState.rules.gainPowerAmount }),
-              t("rules.powerNoTarget"),
-              t("rules.babyCity.powerEliminated"),
+              t("rules.babyCity.power.gain", { amount: gameState.rules.gainPowerAmount }),
+              t("rules.babyCity.power.noTarget"),
+              t("rules.babyCity.power.vulnerable"),
             ],
           },
           {
-            title: t("rules.babyCity.attacks"),
+            title: t("move.defense"),
             items: [
-              t("rules.babyCity.prick"),
-              t("rules.babyCity.clangClang"),
-              t("rules.babyCity.visaRay"),
-              t("rules.babyCity.detonation"),
-              t("rules.babyCity.attackLadder"),
+              t("rules.babyCity.defense.free"),
+              t("rules.babyCity.defense.blocks"),
+              t("rules.babyCity.defense.limit"),
             ],
           },
           {
-            title: t("rules.babyCity.defenses"),
+            title: t("move.cover_ear"),
             items: [
-              t("rules.babyCity.defense"),
-              t("rules.babyCity.coverEar"),
-              t("rules.babyCity.vSign"),
-              t("rules.babyCity.absorb"),
-              t("rules.babyCity.knife"),
+              t("rules.babyCity.coverEar.free"),
+              t("rules.babyCity.coverEar.blocks"),
+              t("rules.babyCity.coverEar.limit"),
             ],
           },
           {
-            title: t("rules.babyCity.seal"),
+            title: t("move.v"),
             items: [
-              t("rules.babyCity.sealOnce"),
-              t("rules.babyCity.sealNullify"),
-              t("rules.babyCity.sealInvulnerable"),
-              t("rules.babyCity.sealPower"),
-              t("rules.babyCity.sealDetonation"),
+              t("rules.babyCity.v.free"),
+              t("rules.babyCity.v.blocks"),
+              t("rules.babyCity.v.limit"),
+            ],
+          },
+          {
+            title: t("move.absorb"),
+            items: [
+              t("rules.babyCity.absorb.free"),
+              t("rules.babyCity.absorb.blocks"),
+              t("rules.babyCity.absorb.gain"),
+              t("rules.babyCity.absorb.weakness"),
+            ],
+          },
+          {
+            title: t("move.knife"),
+            items: [
+              t("rules.babyCity.knife.free"),
+              t("rules.babyCity.knife.range"),
+              t("rules.babyCity.knife.beats"),
+              t("rules.babyCity.knife.weakness"),
+            ],
+          },
+          {
+            title: t("move.seal"),
+            items: [
+              t("rules.babyCity.seal.free"),
+              t("rules.babyCity.seal.nullify"),
+              t("rules.babyCity.seal.invulnerable"),
+              t("rules.babyCity.seal.power"),
+              t("rules.babyCity.seal.detonation"),
+            ],
+          },
+          {
+            title: t("move.prick"),
+            items: [
+              t("rules.babyCity.prick.cost"),
+              t("rules.babyCity.prick.mutual"),
+            ],
+          },
+          {
+            title: t("move.clang_clang"),
+            items: [
+              t("rules.babyCity.clangClang.cost"),
+              t("rules.babyCity.clangClang.beats"),
+            ],
+          },
+          {
+            title: t("move.visa_ray"),
+            items: [
+              t("rules.babyCity.visaRay.cost"),
+              t("rules.babyCity.visaRay.beats"),
+            ],
+          },
+          {
+            title: t("move.detonation"),
+            items: [
+              t("rules.babyCity.detonation.cost"),
+              t("rules.babyCity.detonation.beats"),
+              t("rules.babyCity.detonation.safe"),
             ],
           },
         ];
