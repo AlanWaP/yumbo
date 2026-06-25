@@ -16,7 +16,7 @@
 
   const translations = {
     en: {
-      "app.title": "Yumbo Multiplayer",
+      "app.title": "Yumbo - Clap-war games",
       "aria.github": "Open GitHub repository",
       "status.enterBackend": "Enter your backend URL to begin.",
       "status.enterBackendToStart": "Enter your backend WebSocket URL to start.",
@@ -269,7 +269,7 @@
       "reason.visaRayOverpoweredByDetonation": "visa ray was overpowered by detonation",
     },
     zh: {
-      "app.title": "Yumbo 多人游戏",
+      "app.title": "Yumbo - Clap-war games",
       "aria.github": "打开 GitHub 仓库",
       "status.enterBackend": "请输入后端地址开始游戏。",
       "status.enterBackendToStart": "请输入后端 WebSocket 地址开始游戏。",
