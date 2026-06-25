@@ -30,26 +30,12 @@
       frame.hidden = true;
     }
 
-    function setPlaceholder(title, detail) {
-      frame.innerHTML = "";
-
-      const heading = document.createElement("h2");
-      heading.textContent = title;
-
-      const paragraph = document.createElement("p");
-      paragraph.textContent = detail;
-
-      frame.append(heading, paragraph);
-    }
-
     function renderGameState(gameState) {
-      show();
-      frame.innerHTML = "";
-
       if (!gameState) {
-        setPlaceholder(t("game.readyTitle"), t("game.readyDetail"));
         return;
       }
+
+      frame.innerHTML = "";
       syncGameLog(gameState);
 
       let selectedTargetId = getSelectedTargetId();

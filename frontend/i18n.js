@@ -100,8 +100,6 @@
 
       "game.placeholderTitle": "Game Frame",
       "game.placeholderDetail": "Future game elements will be mounted here. This framework only shows connection, queue, and room state for now.",
-      "game.readyTitle": "Room Ready",
-      "game.readyDetail": "Waiting for the first game state from the backend.",
       "game.players": "Players",
       "game.you": "You",
       "game.team": "Team: {team}",
@@ -354,8 +352,6 @@
 
       "game.placeholderTitle": "游戏区域",
       "game.placeholderDetail": "之后的游戏元素会显示在这里。当前框架只展示连接、队列和房间状态。",
-      "game.readyTitle": "房间已准备",
-      "game.readyDetail": "正在等待后端发送第一个游戏状态。",
       "game.players": "玩家",
       "game.you": "你",
       "game.team": "队伍：{team}",

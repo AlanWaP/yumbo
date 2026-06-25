@@ -742,6 +742,9 @@ function hideGameSurfaces() {
 }
 
 function renderGameState(gameState) {
+  if (!gameState) {
+    return;
+  }
   gameScreen.renderGameState(gameState);
   updateActionButtons();
 }
