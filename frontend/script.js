@@ -14,7 +14,6 @@ const languageToggleButton = document.querySelector("#language-toggle-button");
 const joinQueueButton = document.querySelector("#join-queue-button");
 const leaveQueueButton = document.querySelector("#leave-queue-button");
 const leaveRoomButton = document.querySelector("#leave-room-button");
-const cancelMoveButton = document.querySelector("#cancel-move-button");
 const refreshLobbyButton = document.querySelector("#refresh-lobby-button");
 const existingGamesList = document.querySelector("#existing-games-list");
 const gameFrame = document.querySelector("#game-frame");
@@ -50,7 +49,6 @@ let submittedRound;
 let submittedMove;
 let selectedTargetId;
 let lastMoveReceipt;
-let moveCancelAvailable = false;
 let currentStatus = { key: "status.enterBackend" };
 let activeServerUrl;
 let intentionalClose = false;
@@ -121,9 +119,7 @@ const gameScreen = window.createGameScreen({
     selectedTargetId = targetId;
   },
   getCurrentGameState: () => currentGameState,
-  getMoveCancelAvailable: () => moveCancelAvailable,
   sendGameMove,
-  cancelGameMove,
   formatPlayerIds,
   t,
 });
@@ -189,10 +185,6 @@ leaveQueueButton.addEventListener("click", () => {
 
 leaveRoomButton.addEventListener("click", () => {
   send({ type: "leave_room" });
-});
-
-cancelMoveButton.addEventListener("click", () => {
-  cancelGameMove();
 });
 
 refreshLobbyButton.addEventListener("click", () => {
@@ -323,7 +315,6 @@ function resetSessionState() {
   joinQueueButton.hidden = false;
   leaveQueueButton.hidden = true;
   leaveRoomButton.hidden = true;
-  cancelMoveButton.hidden = true;
   playerId = undefined;
   roomId = undefined;
   gameType = undefined;
@@ -453,7 +444,6 @@ function handleServerMessage(rawMessage) {
     lastMoveReceipt = message.payload;
     submittedRound = roundNumber(message.payload?.round);
     applySubmittedMoveFromMessage(message);
-    markMoveCancelAvailable();
     if (currentGameState && message.payload?.submittedPlayers) {
       currentGameState = {
         ...currentGameState,
@@ -559,9 +549,6 @@ function applyRoomState(message) {
   clearSubmittedMoveState();
   applySubmittedMoveFromMessage(message);
   syncSubmissionFromGameState(currentGameState);
-  if (hasActiveSubmittedMove()) {
-    markMoveCancelAvailable();
-  }
   showGameFrame();
   renderGameState(currentGameState);
   joinQueueButton.hidden = false;
@@ -693,7 +680,6 @@ function syncSubmissionFromGameState(gameState) {
   }
 
   submittedRound = roundNumber(gameState.round);
-  markMoveCancelAvailable();
   if (!lastMoveReceipt) {
     const neededPlayers = Object.values(gameState.players || {})
       .filter((player) => player.alive)
@@ -755,7 +741,6 @@ function renderGameState(gameState) {
     return;
   }
   gameScreen.renderGameState(gameState);
-  updateActionButtons();
 }
 
 function clearSubmittedMoveState() {
@@ -763,29 +748,6 @@ function clearSubmittedMoveState() {
   submittedRound = undefined;
   submittedMove = undefined;
   selectedTargetId = undefined;
-  moveCancelAvailable = false;
-  updateActionButtons();
-}
-
-function markMoveCancelAvailable() {
-  moveCancelAvailable = true;
-  updateActionButtons();
-}
-
-function hasActiveSubmittedMove() {
-  if (!currentGameState || currentGameState.phase === "finished") {
-    return false;
-  }
-  if (moveCancelAvailable) {
-    return true;
-  }
-  const round = roundNumber(currentGameState?.round);
-  const tracked = roundNumber(submittedRound);
-  return Boolean(submittedMove && tracked !== undefined && tracked === round);
-}
-
-function updateActionButtons() {
-  cancelMoveButton.hidden = !(roomId && hasActiveSubmittedMove());
 }
 
 function sendGameMove(moveType, targetId) {
@@ -794,7 +756,6 @@ function sendGameMove(moveType, targetId) {
     targetId,
   };
   submittedRound = roundNumber(currentGameState?.round);
-  markMoveCancelAvailable();
   send({
     type: "game_move",
     payload: {
@@ -802,10 +763,6 @@ function sendGameMove(moveType, targetId) {
       targetId,
     },
   });
-}
-
-function cancelGameMove() {
-  send({ type: "cancel_move" });
 }
 
 function setGameStatus(messageType, gameState) {
@@ -866,7 +823,6 @@ function updateLabels() {
   sessionStatusLabel.textContent = t("labels.sessionStatus", {
     status: formatSessionStatus(),
   });
-  updateActionButtons();
 }
 
 function formatGameType(value) {

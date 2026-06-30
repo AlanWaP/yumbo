@@ -68,6 +68,7 @@
     TARGETED_BUTTON_CLASS,
     requiresTargetPlayer,
     hasTargetSelectionMoves,
+    isMoveDisabled,
     buildTableMoves,
   };
 })();

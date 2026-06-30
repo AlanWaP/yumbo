@@ -7,9 +7,7 @@
     getSelectedTargetId,
     setSelectedTargetId,
     getCurrentGameState,
-    getMoveCancelAvailable,
     sendGameMove,
-    cancelGameMove,
     formatPlayerIds,
     t,
   }) {
@@ -17,6 +15,7 @@
     let currentGameId;
     let activeInfoTab = "log";
     let pendingTargetMoveType;
+    let stagedMoveType;
     const gameLogEntries = [];
     const loggedRoundKeys = new Set();
     const loggedResultKeys = new Set();
@@ -45,6 +44,7 @@
       }
       if (!canSubmitMove(gameState)) {
         pendingTargetMoveType = undefined;
+        stagedMoveType = undefined;
       }
 
       const board = document.createElement("section");
@@ -101,6 +101,7 @@
       if (gameState.id !== currentGameId) {
         currentGameId = gameState.id;
         pendingTargetMoveType = undefined;
+        stagedMoveType = undefined;
         gameLogEntries.length = 0;
         loggedRoundKeys.clear();
         loggedResultKeys.clear();
@@ -325,10 +326,6 @@
             ? t("game.choseMove", { move: formatSubmittedMove(submittedMove) })
             : t("game.alreadyMoved");
           panel.append(helperText);
-          const actions = document.createElement("div");
-          actions.className = "action-buttons";
-          actions.append(createCancelButton());
-          panel.append(actions);
         } else if (!currentPlayer(gameState)?.alive) {
           helperText.textContent = t("game.cannotMoveEliminated");
           panel.append(helperText);
@@ -340,13 +337,24 @@
       }
 
       helperText.textContent = formatActionHelper(gameState);
-      panel.append(helperText, createCatalogMoveControls(gameState));
+      panel.append(helperText, createCatalogMoveControls(gameState), createConfirmButton(gameState));
       return panel;
     }
 
     function formatActionHelper(gameState) {
       if (pendingTargetMoveType) {
         return t("game.chooseTargetFor", { move: formatMoveName(pendingTargetMoveType) });
+      }
+      if (stagedMoveType) {
+        const entry = findCatalogEntry(gameState, stagedMoveType);
+        const targetId = getSelectedTargetId();
+        if (entry && moveUi.requiresTargetPlayer(entry) && targetId) {
+          return t("game.readyToTarget", {
+            move: formatMoveName(stagedMoveType),
+            target: targetId,
+          });
+        }
+        return t("game.selectedMove", { move: formatMoveName(stagedMoveType) });
       }
       if (moveUi.hasTargetSelectionMoves(gameState.moveCatalog)) {
         return t("game.pickMoveWithTargets");
@@ -355,9 +363,6 @@
     }
 
     function isWaitingAfterSubmit(gameState) {
-      if (getMoveCancelAvailable()) {
-        return gameState?.phase !== "finished";
-      }
       return hasSubmittedThisRound(gameState) || hasOptimisticSubmission(gameState);
     }
 
@@ -380,39 +385,82 @@
       return submittedRound !== undefined && submittedRound === currentRound;
     }
 
-    function createCancelButton() {
-      const cancelButton = document.createElement("button");
-      cancelButton.type = "button";
-      cancelButton.className = "action-cancel-button";
-      cancelButton.textContent = t("game.cancelMove");
-      cancelButton.addEventListener("click", () => cancelSelection());
-      return cancelButton;
-    }
-
-    function cancelSelection() {
-      const gameState = getCurrentGameState();
-      if (isWaitingAfterSubmit(gameState)) {
-        cancelGameMove();
-        return;
-      }
-
-      clearLocalStaging();
-      renderGameState(getCurrentGameState());
-    }
-
     function clearLocalStaging() {
       pendingTargetMoveType = undefined;
+      stagedMoveType = undefined;
       setSelectedTargetId(undefined);
     }
 
     function armTargetedMove(moveType) {
       pendingTargetMoveType = moveType;
+      stagedMoveType = undefined;
       setSelectedTargetId(undefined);
       renderGameState(getCurrentGameState());
     }
 
-    function isArmedMove(moveType) {
-      return pendingTargetMoveType === moveType;
+    function stageMove(moveType) {
+      stagedMoveType = moveType;
+      pendingTargetMoveType = undefined;
+      setSelectedTargetId(undefined);
+      renderGameState(getCurrentGameState());
+    }
+
+    function isSelectedMove(moveType) {
+      return stagedMoveType === moveType || pendingTargetMoveType === moveType;
+    }
+
+    function findCatalogEntry(gameState, moveType) {
+      return (gameState.moveCatalog || []).find((entry) => entry.id === moveType);
+    }
+
+    function isStagedMoveValid(gameState) {
+      if (!stagedMoveType) {
+        return false;
+      }
+
+      const entry = findCatalogEntry(gameState, stagedMoveType);
+      if (!entry) {
+        return false;
+      }
+
+      const player = currentPlayer(gameState);
+      const hasTargets = attackTargets(gameState).length > 0;
+      if (moveUi.isMoveDisabled(entry, gameState, player, hasTargets)) {
+        return false;
+      }
+
+      if (moveUi.requiresTargetPlayer(entry)) {
+        const targetId = getSelectedTargetId();
+        return Boolean(targetId && attackTargets(gameState).some((target) => target.id === targetId));
+      }
+
+      return true;
+    }
+
+    function createConfirmButton(gameState) {
+      const actions = document.createElement("div");
+      actions.className = "action-buttons";
+
+      const confirmButton = document.createElement("button");
+      confirmButton.type = "button";
+      confirmButton.className = "action-confirm-button";
+      confirmButton.textContent = t("game.confirmMove");
+      confirmButton.disabled = !isStagedMoveValid(gameState);
+      confirmButton.addEventListener("click", () => confirmStagedMove());
+      actions.append(confirmButton);
+      return actions;
+    }
+
+    function confirmStagedMove() {
+      const gameState = getCurrentGameState();
+      if (!isStagedMoveValid(gameState)) {
+        return;
+      }
+
+      const targetId = getSelectedTargetId();
+      sendGameMove(stagedMoveType, targetId || undefined);
+      clearLocalStaging();
+      renderGameState(getCurrentGameState());
     }
 
     function createMoveButton(label, moveType, options = {}) {
@@ -423,15 +471,14 @@
       if (moveUi.requiresTargetPlayer(options.entry)) {
         button.classList.add(moveUi.TARGETED_BUTTON_CLASS);
       }
-      if (isArmedMove(moveType)) {
+      if (isSelectedMove(moveType)) {
         button.classList.add("selected-move");
       }
       button.addEventListener("click", () => {
         if (moveUi.requiresTargetPlayer(options.entry)) {
           armTargetedMove(moveType);
         } else {
-          clearLocalStaging();
-          sendGameMove(moveType);
+          stageMove(moveType);
         }
       });
       return button;
@@ -529,12 +576,24 @@
     }
 
     function selectPlayerTarget(targetId) {
-      if (!pendingTargetMoveType) {
+      const gameState = getCurrentGameState();
+      if (!canSubmitMove(gameState)) {
         return;
       }
-      const moveType = pendingTargetMoveType;
-      clearLocalStaging();
-      sendGameMove(moveType, targetId);
+
+      if (pendingTargetMoveType) {
+        stagedMoveType = pendingTargetMoveType;
+        pendingTargetMoveType = undefined;
+        setSelectedTargetId(targetId);
+        renderGameState(getCurrentGameState());
+        return;
+      }
+
+      const entry = stagedMoveType ? findCatalogEntry(gameState, stagedMoveType) : undefined;
+      if (stagedMoveType && entry && moveUi.requiresTargetPlayer(entry)) {
+        setSelectedTargetId(targetId);
+        renderGameState(getCurrentGameState());
+      }
     }
 
     function canSubmitMove(gameState) {
@@ -562,11 +621,20 @@
     }
 
     function isTargetablePlayer(gameState, player) {
-      return Boolean(
-        pendingTargetMoveType &&
-          canSubmitMove(gameState) &&
-          attackTargets(gameState).some((target) => target.id === player.id)
-      );
+      if (!canSubmitMove(gameState)) {
+        return false;
+      }
+
+      const entry = pendingTargetMoveType
+        ? findCatalogEntry(gameState, pendingTargetMoveType)
+        : stagedMoveType
+          ? findCatalogEntry(gameState, stagedMoveType)
+          : undefined;
+      if (!entry || !moveUi.requiresTargetPlayer(entry)) {
+        return false;
+      }
+
+      return attackTargets(gameState).some((target) => target.id === player.id);
     }
 
     return {

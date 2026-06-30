@@ -632,10 +632,10 @@ button.game-card:hover:not(:disabled) {
   color: #ffffff;
 }
 
-.action-cancel-button {
-  background: #ffffff;
-  color: #33406a;
-  border: 1px solid #cfd7eb;
+.action-confirm-button:disabled {
+  background: #b8c4e6;
+  color: #ffffff;
+  cursor: not-allowed;
 }
 
 .action-helper {
@@ -658,12 +658,6 @@ button.game-card:hover:not(:disabled) {
   flex-wrap: wrap;
   gap: 10px;
   margin-top: 18px;
-}
-
-.actions #cancel-move-button {
-  background: #ffffff;
-  color: #33406a;
-  border: 1px solid #cfd7eb;
 }
 
 .actions #leave-room-button,
