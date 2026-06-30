@@ -520,9 +520,9 @@ button.game-card:hover:not(:disabled) {
 }
 
 .game-controls button.selected-move {
-  border-color: #3a63f3;
-  box-shadow: 0 0 0 2px rgba(58, 99, 243, 0.18);
-  background: #f8faff;
+  border-color: #1f37a6;
+  box-shadow: 0 0 0 2px rgba(58, 99, 243, 0.35);
+  background: #1f37a6;
 }
 
 .game-controls button.targeted-move {
